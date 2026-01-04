@@ -1,0 +1,22 @@
+{
+  "@context": ["https://www.w3.org/2022/wot/td/v1.1"],
+  "title": "Counter",
+  "description": "A simple counter thing",
+  "properties": {
+    "count": {
+      "type": "integer",
+      "description": "current counter value",
+      "observable": true,
+      "readOnly": true
+    }
+  },
+  "actions": {
+    "increment": {
+      "description": "increment counter value"
+    },
+    "reset": {
+      "description": "reset counter value to zero"
+    }
+  },
+  "events": {}
+}

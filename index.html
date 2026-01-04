@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Semaphore Counter</title>
+
+        <!-- Import CSS -->
+        <link rel="stylesheet" href="www/style.css" />
+    </head>
+
+    <body>
+        <div>
+            <h1>Semaphore Counter - Orchestrator</h1>
+            <p>
+                This is the visualization for the Semaphore Counter practical lesson.
+                It exposes no thing, but it consumes two remote things:
+            </p>
+            <ul>
+                <li>A <strong>Counter Thing</strong> that maintains a count value and allows incrementing it.</li>
+                <li>A <strong>Semaphore Thing</strong> that changes its color based on the count value.</li>
+            </ul>
+            <p>
+                The orchestrator periodically increments the counter and updates the semaphore color based on the current count.
+            </p>
+        </div>
+
+        <div class="ThingsDisplay">
+            <div id="Semaphore">
+                <div id="SemaphoreLight1" class="SemaphoreRed"></div>
+                <div id="SemaphoreLight2" class="SemaphoreOff"></div>
+                <div id="SemaphoreLight3" class="SemaphoreOff"></div>
+            </div>
+
+            <div id="Counter">
+                <h2>Counter Value: <span id="CounterValue">0</span></h2>
+            </div>
+
+            <button onclick="resetCounter()">RESET</button>
+
+            <div id="Status">Status: disconnected</div>
+        </div>
+
+        <!-- Import JS -->
+        <script src="www/main.js" type="module"></script>
+    </body>
+</html>

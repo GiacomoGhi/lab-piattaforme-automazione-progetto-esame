@@ -1,0 +1,27 @@
+{
+  "name": "wot-semaphore-counter",
+  "version": "0.0.1",
+  "description": "",
+  "main": "./build/main.js",
+  "scripts": {
+    "start": "node ./build/main",
+    "build": "tsc",
+    "dev:build": "tsc -w",
+    "dev:run": "nodemon build/main -jsap './resources/gregnet.jsap' -loglevel 1",
+    "start:dev": "concurrently npm:dev:*",
+    "test": "jest",
+    "start:build": "tsc && node ./build/main"
+  },
+  "author": "Gregorio Monari",
+  "license": "MIT",
+  "dependencies": {
+    "@node-wot/binding-http": "^0.8.12",
+    "@node-wot/core": "^0.8.12",
+    "@node-wot/td-tools": "^0.8.12",
+    "@types/node": "^20.3.1",
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

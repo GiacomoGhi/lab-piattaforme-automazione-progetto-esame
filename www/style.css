@@ -1,0 +1,41 @@
+.ThingsDisplay{
+    display:flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+#Semaphore{
+    border-radius: 10px;
+    background-color: grey;
+    width: min-content;
+    padding-top:2px;
+    padding-bottom:2px;
+}
+.SemaphoreOff {
+    width: 100px;
+    height: 100px;
+    background-color: black;
+    border-radius: 50%;
+    margin: 10px;
+}
+.SemaphoreRed {
+    width: 100px;
+    height: 100px;
+    background-color: red;
+    border-radius: 50%;
+    margin: 10px;
+}
+.SemaphoreYellow {
+    width: 100px;
+    height: 100px;
+    background-color: yellow;
+    border-radius: 50%;
+    margin: 10px;
+}
+.SemaphoreGreen {
+    width: 100px;
+    height: 100px;
+    background-color: green;
+    border-radius: 50%;
+    margin: 10px;
+}
