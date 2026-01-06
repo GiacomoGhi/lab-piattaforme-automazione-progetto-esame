@@ -1,10 +1,12 @@
 import * as fs from "fs";
 import { HttpClientFactory, HttpServer } from "@node-wot/binding-http";
+import { ModbusClientFactory } from "@node-wot/binding-modbus";
 import Servient from "@node-wot/core";
 
 export enum RuntimeType {
-  Server,
-  Client,
+  HttpServer,
+  HttpClient,
+  ModbusClient,
 }
 
 export async function createWoTRuntimeAsync(
@@ -14,12 +16,17 @@ export async function createWoTRuntimeAsync(
   const remoteServient = new Servient();
 
   switch (type) {
-    case RuntimeType.Server:
+    case RuntimeType.HttpServer:
       remoteServient.addServer(new HttpServer({ port: port }));
       break;
 
-    default:
+    case RuntimeType.HttpClient:
       remoteServient.addClientFactory(new HttpClientFactory(null));
+      break;
+
+    case RuntimeType.ModbusClient:
+      remoteServient.addClientFactory(new ModbusClientFactory());
+      break;
   }
 
   return await remoteServient.start();

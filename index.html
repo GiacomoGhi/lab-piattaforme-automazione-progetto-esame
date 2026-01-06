@@ -1,46 +1,126 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="UTF-8" />
-        <title>Semaphore Counter</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>🐠 Aquarium Monitor</title>
 
-        <!-- Import CSS -->
-        <link rel="stylesheet" href="www/style.css" />
-    </head>
+    <!-- Import CSS -->
+    <link rel="stylesheet" href="www/style.css" />
+  </head>
 
-    <body>
-        <div>
-            <h1>Semaphore Counter - Orchestrator</h1>
-            <p>
-                This is the visualization for the Semaphore Counter practical lesson.
-                It exposes no thing, but it consumes two remote things:
-            </p>
-            <ul>
-                <li>A <strong>Counter Thing</strong> that maintains a count value and allows incrementing it.</li>
-                <li>A <strong>Semaphore Thing</strong> that changes its color based on the count value.</li>
-            </ul>
-            <p>
-                The orchestrator periodically increments the counter and updates the semaphore color based on the current count.
-            </p>
-        </div>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🐠 Aquarium Monitor</h1>
+        <p class="subtitle">Real-time water quality monitoring system</p>
+        <div id="Status" class="status-badge">Status: disconnected</div>
+      </header>
 
-        <div class="ThingsDisplay">
-            <div id="Semaphore">
-                <div id="SemaphoreLight1" class="SemaphoreRed"></div>
-                <div id="SemaphoreLight2" class="SemaphoreOff"></div>
-                <div id="SemaphoreLight3" class="SemaphoreOff"></div>
+      <div class="dashboard">
+        <!-- Water Quality Sensor Card -->
+        <div class="card sensor-card">
+          <h2>💧 Water Quality Sensor</h2>
+          <div class="parameters">
+            <div class="parameter" id="ph-container">
+              <div class="param-header">
+                <span class="param-label">pH Level</span>
+                <span class="status-indicator" id="ph-status">●</span>
+              </div>
+              <div class="param-value" id="ph-value">--</div>
+              <div class="param-range">Optimal: 6.5 - 7.5</div>
+              <div class="progress-bar">
+                <div class="progress" id="ph-progress"></div>
+              </div>
             </div>
 
-            <div id="Counter">
-                <h2>Counter Value: <span id="CounterValue">0</span></h2>
+            <div class="parameter" id="temp-container">
+              <div class="param-header">
+                <span class="param-label">🌡️ Temperature</span>
+                <span class="status-indicator" id="temp-status">●</span>
+              </div>
+              <div class="param-value" id="temp-value">--°C</div>
+              <div class="param-range">Optimal: 24 - 26°C</div>
+              <div class="progress-bar">
+                <div class="progress" id="temp-progress"></div>
+              </div>
             </div>
 
-            <button onclick="resetCounter()">RESET</button>
-
-            <div id="Status">Status: disconnected</div>
+            <div class="parameter" id="oxygen-container">
+              <div class="param-header">
+                <span class="param-label">💨 Oxygen Level</span>
+                <span class="status-indicator" id="oxygen-status">●</span>
+              </div>
+              <div class="param-value" id="oxygen-value">-- mg/L</div>
+              <div class="param-range">Optimal: 6 - 8 mg/L</div>
+              <div class="progress-bar">
+                <div class="progress" id="oxygen-progress"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Import JS -->
-        <script src="www/main.js" type="module"></script>
-    </body>
+        <!-- Filter Pump Card -->
+        <div class="card pump-card">
+          <h2>⚙️ Filter Pump</h2>
+          <div class="pump-info">
+            <div class="pump-status">
+              <span class="status-label">Status:</span>
+              <span class="status-value" id="pump-status">--</span>
+            </div>
+
+            <div class="pump-speed">
+              <span class="speed-label">Pump Speed</span>
+              <div class="speed-display">
+                <span class="speed-value" id="pump-speed">--</span>
+                <span class="speed-unit">%</span>
+              </div>
+              <div class="speed-control">
+                <input
+                  type="range"
+                  id="speed-slider"
+                  min="0"
+                  max="100"
+                  value="50"
+                />
+                <button id="set-speed-btn" class="btn btn-primary">
+                  Set Speed
+                </button>
+              </div>
+            </div>
+
+            <div class="filter-health">
+              <span class="health-label">Filter Health</span>
+              <div class="health-bar">
+                <div class="health-fill" id="health-fill"></div>
+              </div>
+              <span class="health-value" id="filter-health">--%</span>
+            </div>
+
+            <div class="pump-actions">
+              <button id="cleaning-btn" class="btn btn-secondary">
+                🧹 Start Cleaning
+              </button>
+              <button id="stop-btn" class="btn btn-danger">⏹ Stop Pump</button>
+            </div>
+
+            <div class="last-cleaning">
+              <span>Last Cleaning:</span>
+              <span id="last-cleaning-time">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts Section -->
+      <div class="alerts-section">
+        <h2>📢 Recent Alerts</h2>
+        <div class="alerts-container" id="alerts-container">
+          <p class="no-alerts">No alerts yet</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import JS -->
+    <script src="www/main.js" type="module"></script>
+  </body>
 </html>

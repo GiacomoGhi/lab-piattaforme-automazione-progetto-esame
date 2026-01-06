@@ -1,27 +1,31 @@
 {
-  "name": "wot-semaphore-counter",
-  "version": "0.0.1",
-  "description": "",
+  "name": "aquarium-monitor",
+  "version": "1.0.0",
+  "description": "Aquarium water quality monitoring system using WoT (HTTP + Modbus)",
   "main": "./build/main.js",
   "scripts": {
     "start": "node ./build/main",
     "build": "tsc",
+    "mock": "npx ts-node src/mock/ModbusFilterPumpMockServer.ts",
     "dev:build": "tsc -w",
-    "dev:run": "nodemon build/main -jsap './resources/gregnet.jsap' -loglevel 1",
+    "dev:run": "nodemon build/main",
     "start:dev": "concurrently npm:dev:*",
     "test": "jest",
     "start:build": "tsc && node ./build/main"
   },
-  "author": "Gregorio Monari",
+  "author": "",
   "license": "MIT",
   "dependencies": {
     "@node-wot/binding-http": "^0.8.12",
+    "@node-wot/binding-modbus": "^0.9.1",
     "@node-wot/core": "^0.8.12",
     "@node-wot/td-tools": "^0.8.12",
     "@types/node": "^20.3.1",
-    "serialport": "^12.0.0"
+    "modbus-serial": "^8.0.17",
+    "ts-node": "^10.9.2"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
   }
 }
