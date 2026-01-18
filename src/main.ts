@@ -1,4 +1,6 @@
 import * as fs from "fs";
+import * as path from "path";
+import * as http from "http";
 import { Servient } from "@node-wot/core";
 import { HttpServer, HttpClientFactory } from "@node-wot/binding-http";
 import { ModbusClientFactory } from "@node-wot/binding-modbus";
@@ -31,12 +33,86 @@ const state: OrchestratorState = {
   lastDailyCleaningDate: "",
 };
 
-function getTDFromFile(path: string): WoT.ThingDescription {
-  return JSON.parse(fs.readFileSync(path).toString());
+function getTDFromFile(filePath: string): WoT.ThingDescription {
+  return JSON.parse(fs.readFileSync(filePath).toString());
+}
+
+/**
+ * Serve static files (index.html, www/*, etc.)
+ */
+function startStaticFileServer(port: number = 3000): void {
+  const server = http.createServer((req, res) => {
+    // Enable CORS
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // Route to index.html by default
+    let filePath = (req.url === "/" || !req.url) ? "/index.html" : req.url;
+
+    // Security: prevent directory traversal
+    filePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, "");
+
+    // Map URL to file system
+    const fullPath = path.join(process.cwd(), filePath);
+
+    // Try to serve the file
+    fs.readFile(fullPath, (err, data) => {
+      if (err) {
+        // If file not found and it's not a special path, try index.html
+        if (filePath !== "/index.html" && !filePath.includes(".")) {
+          fs.readFile(path.join(process.cwd(), "index.html"), (err2, data2) => {
+            if (err2) {
+              res.writeHead(404, { "Content-Type": "text/plain" });
+              res.end("404 Not Found");
+            } else {
+              res.writeHead(200, { "Content-Type": "text/html" });
+              res.end(data2);
+            }
+          });
+        } else {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("404 Not Found");
+        }
+        return;
+      }
+
+      // Determine content type
+      const ext = path.extname(fullPath).toLowerCase();
+      const contentTypes: { [key: string]: string } = {
+        ".html": "text/html",
+        ".js": "application/javascript",
+        ".css": "text/css",
+        ".json": "application/json",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+      };
+
+      const contentType = contentTypes[ext] || "application/octet-stream";
+      res.writeHead(200, { "Content-Type": contentType });
+      res.end(data);
+    });
+  });
+
+  server.listen(port, () => {
+    console.log(`📡 Static file server listening on http://localhost:${port}`);
+    console.log(`   Open: http://localhost:${port}\n`);
+  });
 }
 
 (async function main() {
   console.log("🐠 Starting Aquarium Monitor System...\n");
+
+  // Start static file server (serves index.html, www/*, etc.)
+  startStaticFileServer(3000);
 
   // Create servient with HTTP server and Modbus client
   const servient = new Servient();

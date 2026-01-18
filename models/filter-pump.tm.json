@@ -1,1 +1,91 @@
-{}
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "title": "FilterPump",
+  "description": "Aquarium filter pump with speed control and cleaning cycle management. Acts as HTTP proxy to Modbus device.",
+  "securityDefinitions": {
+    "nosec": {
+      "scheme": "nosec"
+    }
+  },
+  "security": "nosec",
+  "properties": {
+    "pumpSpeed": {
+      "title": "Pump Speed",
+      "type": "integer",
+      "description": "Current pump speed percentage",
+      "minimum": 0,
+      "maximum": 100,
+      "observable": true,
+      "readOnly": true
+    },
+    "filterStatus": {
+      "title": "Filter Status",
+      "type": "string",
+      "description": "Current status of the filter",
+      "enum": ["idle", "running", "cleaning", "error"],
+      "observable": true,
+      "readOnly": true
+    },
+    "filterHealth": {
+      "title": "Filter Health",
+      "type": "integer",
+      "description": "Filter health percentage (0-100), decreases over time",
+      "minimum": 0,
+      "maximum": 100,
+      "observable": true,
+      "readOnly": true
+    },
+    "lastCleaningTime": {
+      "title": "Last Cleaning Time",
+      "type": "string",
+      "description": "ISO 8601 timestamp of the last cleaning cycle",
+      "observable": true,
+      "readOnly": true
+    }
+  },
+  "actions": {
+    "setPumpSpeed": {
+      "title": "Set Pump Speed",
+      "description": "Set the pump speed to a desired percentage",
+      "input": {
+        "type": "integer",
+        "description": "Desired pump speed (0-100)",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "newSpeed": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cleaningCycle": {
+      "title": "Cleaning Cycle",
+      "description": "Trigger an immediate cleaning cycle of the filter",
+      "output": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+
