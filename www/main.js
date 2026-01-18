@@ -90,20 +90,20 @@ async function fetchAllData() {
 
 async function fetchSensorData() {
   try {
-    const [phRes, tempRes, oxygenRes] = await Promise.all([
-      fetch(`${BASE_URL}/waterqualitysensor/properties/pH`),
-      fetch(`${BASE_URL}/waterqualitysensor/properties/temperature`),
-      fetch(`${BASE_URL}/waterqualitysensor/properties/oxygenLevel`),
-    ]);
-
-    if (!phRes.ok || !tempRes.ok || !oxygenRes.ok) {
-      throw new Error("Failed to fetch sensor data");
+    // Fetch all properties at once using the WoT readallproperties endpoint
+    const res = await fetch(`${BASE_URL}/waterqualitysensor/properties`);
+    
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
     }
 
+    const data = await res.json();
+    
+    // node-wot returns all properties in the response
     return {
-      pH: await phRes.json(),
-      temperature: await tempRes.json(),
-      oxygenLevel: await oxygenRes.json(),
+      pH: data.pH !== undefined ? data.pH : 7.0,
+      temperature: data.temperature !== undefined ? data.temperature : 25.0,
+      oxygenLevel: data.oxygenLevel !== undefined ? data.oxygenLevel : 7.0,
     };
   } catch (error) {
     console.error("Error fetching sensor data:", error);
@@ -113,24 +113,21 @@ async function fetchSensorData() {
 
 async function fetchPumpData() {
   try {
-    const [speedRes, statusRes, healthRes, lastCleaningRes] = await Promise.all(
-      [
-        fetch(`${BASE_URL}/filterpump/properties/pumpSpeed`),
-        fetch(`${BASE_URL}/filterpump/properties/filterStatus`),
-        fetch(`${BASE_URL}/filterpump/properties/filterHealth`),
-        fetch(`${BASE_URL}/filterpump/properties/lastCleaningTime`),
-      ]
-    );
-
-    if (!speedRes.ok || !statusRes.ok || !healthRes.ok) {
-      throw new Error("Failed to fetch pump data");
+    // Fetch all properties at once using the WoT readallproperties endpoint
+    const res = await fetch(`${BASE_URL}/filterpump/properties`);
+    
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
     }
 
+    const data = await res.json();
+    
+    // node-wot returns all properties in the response
     return {
-      speed: await speedRes.json(),
-      status: await statusRes.json(),
-      health: await healthRes.json(),
-      lastCleaning: lastCleaningRes.ok ? await lastCleaningRes.json() : null,
+      speed: data.pumpSpeed !== undefined ? data.pumpSpeed : 0,
+      status: data.filterStatus !== undefined ? data.filterStatus : "idle",
+      health: data.filterHealth !== undefined ? data.filterHealth : 100,
+      lastCleaning: data.lastCleaningTime || null,
     };
   } catch (error) {
     console.error("Error fetching pump data:", error);

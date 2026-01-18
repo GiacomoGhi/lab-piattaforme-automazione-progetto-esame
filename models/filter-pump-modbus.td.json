@@ -1,1 +1,73 @@
-{}
+{
+  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "title": "FilterPumpModbus",
+  "description": "Modbus TCP device descriptor for aquarium filter pump. Communicates via Modbus registers.",
+  "properties": {
+    "pumpSpeed": {
+      "type": "integer",
+      "description": "Pump speed from Modbus register 0",
+      "minimum": 0,
+      "maximum": 100,
+      "forms": [
+        {
+          "href": "modbus+tcp://127.0.0.1:502/holding/0",
+          "contentType": "application/json"
+        }
+      ]
+    },
+    "filterStatus": {
+      "type": "integer",
+      "description": "Filter status from Modbus register 1 (0=idle, 1=running, 2=cleaning, 3=error)",
+      "minimum": 0,
+      "maximum": 3,
+      "forms": [
+        {
+          "href": "modbus+tcp://127.0.0.1:502/holding/1",
+          "contentType": "application/json"
+        }
+      ]
+    },
+    "filterHealth": {
+      "type": "integer",
+      "description": "Filter health from Modbus register 2",
+      "minimum": 0,
+      "maximum": 100,
+      "forms": [
+        {
+          "href": "modbus+tcp://127.0.0.1:502/holding/2",
+          "contentType": "application/json"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "writePumpSpeed": {
+      "description": "Write pump speed to Modbus register 0",
+      "input": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "forms": [
+        {
+          "href": "modbus+tcp://127.0.0.1:502/holding/0",
+          "contentType": "application/json",
+          "op": "writeproperty"
+        }
+      ]
+    },
+    "triggerCleaning": {
+      "description": "Write 1 to Modbus register 3 to trigger cleaning cycle",
+      "input": {
+        "type": "integer"
+      },
+      "forms": [
+        {
+          "href": "modbus+tcp://127.0.0.1:502/holding/3",
+          "contentType": "application/json",
+          "op": "writeproperty"
+        }
+      ]
+    }
+  }
+}
