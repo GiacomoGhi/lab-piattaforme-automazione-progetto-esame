@@ -42,7 +42,7 @@ export class FilterPumpThing {
   constructor(
     runtime: typeof WoT,
     proxyTD: WoT.ThingDescription,
-    modbusTD: WoT.ThingDescription
+    modbusTD: WoT.ThingDescription,
   ) {
     this.runtime = runtime;
     this.proxyTD = proxyTD;
@@ -79,11 +79,21 @@ export class FilterPumpThing {
     });
 
     // Set up action handlers
-    this.thing.setActionHandler("setPumpSpeed", async (speed: any) => {
-      const newSpeed = Math.max(0, Math.min(100, Number(speed)));
+    this.thing.setActionHandler("setPumpSpeed", async (params: any) => {
+      // Extract the actual value from InteractionOutput if needed
+      let speedValue: number;
+      if (params && typeof params.value === "function") {
+        speedValue = await params.value();
+      } else {
+        speedValue = params;
+      }
+      const newSpeed = Math.max(0, Math.min(100, Number(speedValue)));
       this.state.pumpSpeed = newSpeed;
 
-      const statusMap: Record<number, "idle" | "running" | "cleaning" | "error"> = {
+      const statusMap: Record<
+        number,
+        "idle" | "running" | "cleaning" | "error"
+      > = {
         0: "idle",
         1: "running",
         2: "running", // pump running at set speed
@@ -138,7 +148,7 @@ export class FilterPumpThing {
     await this.thing.expose();
     const title = this.proxyTD.title || "FilterPump";
     console.log(
-      `${title} thing started! Go to: http://localhost:8080/${title.toLowerCase()}`
+      `${title} thing started! Go to: http://localhost:8080/${title.toLowerCase()}`,
     );
 
     // Start health degradation simulation
@@ -153,7 +163,10 @@ export class FilterPumpThing {
     this.healthDegradationInterval = setInterval(() => {
       // Health degrades faster at higher speeds
       const degradationRate = (this.state.pumpSpeed / 100) * 0.5; // 0-0.5% per interval
-      this.state.filterHealth = Math.max(0, this.state.filterHealth - degradationRate);
+      this.state.filterHealth = Math.max(
+        0,
+        this.state.filterHealth - degradationRate,
+      );
 
       // Emit changes
       this.thing.emitPropertyChange("filterHealth");

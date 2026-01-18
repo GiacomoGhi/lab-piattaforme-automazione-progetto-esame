@@ -90,8 +90,8 @@ async function fetchAllData() {
 
 async function fetchSensorData() {
   try {
-    // Richiedi il Thing Description per ottenere le proprietà
-    const res = await fetch(`${BASE_URL}/waterqualitysensor`);
+    // Fetch all properties at once using the WoT readallproperties endpoint
+    const res = await fetch(`${BASE_URL}/waterqualitysensor/properties`);
     
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
@@ -99,7 +99,7 @@ async function fetchSensorData() {
 
     const data = await res.json();
     
-    // node-wot restituisce le proprietà nella risposta
+    // node-wot returns all properties in the response
     return {
       pH: data.pH !== undefined ? data.pH : 7.0,
       temperature: data.temperature !== undefined ? data.temperature : 25.0,
@@ -113,8 +113,8 @@ async function fetchSensorData() {
 
 async function fetchPumpData() {
   try {
-    // Richiedi il Thing Description per ottenere le proprietà
-    const res = await fetch(`${BASE_URL}/filterpump`);
+    // Fetch all properties at once using the WoT readallproperties endpoint
+    const res = await fetch(`${BASE_URL}/filterpump/properties`);
     
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
@@ -122,7 +122,7 @@ async function fetchPumpData() {
 
     const data = await res.json();
     
-    // node-wot restituisce le proprietà nella risposta
+    // node-wot returns all properties in the response
     return {
       speed: data.pumpSpeed !== undefined ? data.pumpSpeed : 0,
       status: data.filterStatus !== undefined ? data.filterStatus : "idle",

@@ -50,8 +50,16 @@ class FilterPumpThing {
                 return this.state.lastCleaningTime;
             }));
             // Set up action handlers
-            this.thing.setActionHandler("setPumpSpeed", (speed) => __awaiter(this, void 0, void 0, function* () {
-                const newSpeed = Math.max(0, Math.min(100, Number(speed)));
+            this.thing.setActionHandler("setPumpSpeed", (params) => __awaiter(this, void 0, void 0, function* () {
+                // Extract the actual value from InteractionOutput if needed
+                let speedValue;
+                if (params && typeof params.value === "function") {
+                    speedValue = yield params.value();
+                }
+                else {
+                    speedValue = params;
+                }
+                const newSpeed = Math.max(0, Math.min(100, Number(speedValue)));
                 this.state.pumpSpeed = newSpeed;
                 const statusMap = {
                     0: "idle",
