@@ -50,6 +50,32 @@ const binding_http_1 = require("@node-wot/binding-http");
 const binding_modbus_1 = require("@node-wot/binding-modbus");
 const WaterQualitySensorThing_1 = require("./things/WaterQualitySensorThing");
 const FilterPumpThing_1 = require("./things/FilterPumpThing");
+const sampling_config_1 = require("./config/sampling.config");
+// ====================================
+// AQUARIUM MONITOR - ORCHESTRATOR
+// ====================================
+// Water Quality Sensor (HTTP) + Filter Pump (Modbus)
+// Logic:
+// - pH out of range (< 6.5 or > 7.5) → increase pump speed
+// - Temperature > 26°C → emit alert
+// - Low oxygen (< 6 mg/L) → increase pump speed
+// - Automatic daily cleaning cycle
+// ====================================
+// ====== FILE LOGGING UTILITY ======
+const logsDir = path.join(__dirname, "..", "test-logs");
+const logFile = path.join(logsDir, `test-${new Date().toISOString().split("T")[0]}-${Date.now()}.log`);
+function ensureLogsDir() {
+    if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir, { recursive: true });
+    }
+}
+function logEvent(event, level = "INFO") {
+    ensureLogsDir();
+    const timestamp = new Date().toISOString();
+    const message = `[${timestamp}] [${level}] ${event}\n`;
+    fs.appendFileSync(logFile, message);
+    console.log(message.trim());
+}
 const state = {
     lastAlertTime: 0,
     alertCooldown: 10000, // 10 seconds between alerts
@@ -163,10 +189,10 @@ function startStaticFileServer(port = 3000) {
         consumedSensor.subscribeEvent("parameterAlert", (data) => __awaiter(this, void 0, void 0, function* () {
             const alert = yield data.value();
             const now = Date.now();
-            console.log(`\n🚨 Parameter Alert received: ${JSON.stringify(alert)}`);
+            logEvent(`ALERT [${alert.status.toUpperCase()}] ${alert.parameter}: ${alert.value.toFixed(2)} - ${alert.message}`, "WARN");
             // Check cooldown
             if (now - state.lastAlertTime < state.alertCooldown) {
-                console.log("⏳ Alert cooldown active, skipping action");
+                logEvent(`Cooldown active, skipping action (${Math.round((state.alertCooldown - (now - state.lastAlertTime)) / 1000)}s remaining)`, "DEBUG");
                 return;
             }
             state.lastAlertTime = now;
@@ -178,18 +204,35 @@ function startStaticFileServer(port = 3000) {
             if (alert.parameter === "pH" && alert.status === "alert") {
                 // pH critical - increase pump speed to improve water circulation
                 const newSpeed = Math.min(100, speed + 20);
-                console.log(`🔄 pH critical - increasing pump speed to ${newSpeed}%`);
+                logEvent(`ACTION: pH CRITICAL - Increasing pump speed from ${speed}% to ${newSpeed}%`, "WARN");
                 yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
+                // Wait for action to complete before reading back the value (avoids NaN race condition)
+                yield new Promise((resolve) => setTimeout(resolve, 200));
+                // Activate pump compensation in controlled test mode
+                waterSensor.setPumpCompensation(true);
+                logEvent(`✓ Pump speed updated to ${newSpeed}%`, "INFO");
             }
             else if (alert.parameter === "temperature" && alert.status === "alert") {
-                // Temperature > 26°C - emit alert
-                console.log("🌡️ TEMPERATURE ALERT: Water temperature is critical! Check cooling system.");
+                // Temperature critical - increase pump speed for cooling
+                const newSpeed = Math.min(100, speed + 20);
+                logEvent(`ACTION: TEMPERATURE CRITICAL - Increasing pump speed from ${speed}% to ${newSpeed}% for cooling`, "WARN");
+                yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
+                // Wait for action to complete before reading back the value (avoids NaN race condition)
+                yield new Promise((resolve) => setTimeout(resolve, 200));
+                // Activate pump compensation in controlled test mode
+                waterSensor.setPumpCompensation(true);
+                logEvent(`✓ Pump speed updated to ${newSpeed}%`, "INFO");
             }
             else if (alert.parameter === "oxygenLevel" && alert.status === "alert") {
                 // Oxygen low - increase pump speed for better aeration
                 const newSpeed = Math.min(100, speed + 25);
-                console.log(`💨 Oxygen low - increasing pump speed to ${newSpeed}%`);
+                logEvent(`ACTION: OXYGEN LOW - Increasing pump speed from ${speed}% to ${newSpeed}% for aeration`, "WARN");
                 yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
+                // Wait for action to complete before reading back the value (avoids NaN race condition)
+                yield new Promise((resolve) => setTimeout(resolve, 200));
+                // Activate pump compensation in controlled test mode
+                waterSensor.setPumpCompensation(true);
+                logEvent(`✓ Pump speed updated to ${newSpeed}%`, "INFO");
             }
         }));
         // Daily automatic cleaning cycle check
@@ -203,18 +246,20 @@ function startStaticFileServer(port = 3000) {
                         const health = Number(yield healthProp.value());
                         // Trigger daily cleaning if health is below 50% OR it's a new day
                         if (health < 50) {
-                            console.log(`\n🧹 Daily cleaning cycle - Filter health: ${health}%`);
+                            logEvent(`CLEANING CYCLE INITIATED - Filter health: ${health}%`, "WARN");
                             yield consumedPump.invokeAction("cleaningCycle");
                             state.lastDailyCleaningDate = today;
+                            logEvent(`✓ Cleaning cycle completed`, "INFO");
                         }
                     }
                     catch (error) {
-                        console.error("Error during daily cleaning check:", error);
+                        logEvent(`Error during daily cleaning check: ${error}`, "ERROR");
                     }
                 }
-            }), 30000); // Check every 30 seconds
+            }), sampling_config_1.SAMPLING_CONFIG.ORCHESTRATION_CHECK_INTERVAL); // Configured via ORCHESTRATION_CHECK_INTERVAL env var
         }
         // Periodic status logging
+        let statusLogCount = 0;
         setInterval(() => __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;
             try {
@@ -226,20 +271,20 @@ function startStaticFileServer(port = 3000) {
                 const health = yield filterHealthProp.value();
                 const filterStatusProp = yield consumedPump.readProperty("filterStatus");
                 const status = yield filterStatusProp.value();
-                console.log("\n📊 === AQUARIUM STATUS ===");
-                console.log(`   pH: ${(_a = params.pH) === null || _a === void 0 ? void 0 : _a.toFixed(2)}`);
-                console.log(`   Temperature: ${(_b = params.temperature) === null || _b === void 0 ? void 0 : _b.toFixed(1)}°C`);
-                console.log(`   Oxygen: ${(_c = params.oxygenLevel) === null || _c === void 0 ? void 0 : _c.toFixed(1)} mg/L`);
-                console.log(`   Pump Speed: ${speed}% (${status})`);
-                console.log(`   Filter Health: ${health}%`);
-                console.log("========================\n");
+                // Log status report
+                logEvent(`STATUS REPORT: pH=${(_a = params.pH) === null || _a === void 0 ? void 0 : _a.toFixed(2)} Temp=${(_b = params.temperature) === null || _b === void 0 ? void 0 : _b.toFixed(1)}°C O2=${(_c = params.oxygenLevel) === null || _c === void 0 ? void 0 : _c.toFixed(1)} PumpSpeed=${speed}% PumpStatus=${status} FilterHealth=${health}%`, "DEBUG");
             }
             catch (error) {
-                console.error("Error reading status:", error);
+                logEvent(`Error reading status: ${error}`, "ERROR");
             }
-        }), 10000); // Log every 10 seconds
+        }), sampling_config_1.SAMPLING_CONFIG.ORCHESTRATION_CHECK_INTERVAL); // Configured via ORCHESTRATION_CHECK_INTERVAL env var
+        // Log configuration on startup
+        (0, sampling_config_1.logConfiguration)();
+        logEvent("🎮 Aquarium Monitor started - Test session begun", "INFO");
+        logEvent("Waiting for critical alerts to trigger pump action...", "INFO");
         console.log("🎮 Aquarium Monitor running. Press Ctrl+C to stop.");
         console.log("⚠️  Make sure the Modbus mock server is running!");
         console.log("    Run: npx ts-node src/mock/ModbusFilterPumpMockServer.ts\n");
+        console.log(`📝 Test log: ${logFile}\n`);
     });
 })();

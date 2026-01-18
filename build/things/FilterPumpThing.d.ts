@@ -33,7 +33,10 @@ export declare class FilterPumpThing {
      */
     start(): Promise<void>;
     /**
-     * Simulate filter health degradation and status changes
+     * Simulate filter health degradation and status changes.
+     *
+     * TESTING MODE: Check interval set to 5000ms (5 seconds) for rapid testing.
+     * PRODUCTION MODE: Should be adjusted to 60000ms+ (60+ seconds) for realistic degradation tracking.
      */
     private startSimulation;
     /**

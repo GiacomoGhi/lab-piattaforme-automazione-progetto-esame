@@ -1,5 +1,6 @@
 import WoT from "wot-typescript-definitions";
 import { ModbusClient } from "@node-wot/binding-modbus";
+import { SAMPLING_CONFIG } from "../config/sampling.config";
 
 /**
  * FilterPumpThing - Modbus Proxy for aquarium filter pump.
@@ -80,7 +81,15 @@ export class FilterPumpThing {
 
     // Set up action handlers
     this.thing.setActionHandler("setPumpSpeed", async (speed: any) => {
-      const newSpeed = Math.max(0, Math.min(100, Number(speed)));
+      // Handle different input formats (string, number, or object)
+      let speedValue: number;
+      if (typeof speed === "object" && speed !== null && "speed" in speed) {
+        speedValue = Number(speed.speed);
+      } else {
+        speedValue = Number(speed);
+      }
+
+      const newSpeed = Math.max(0, Math.min(100, speedValue));
       this.state.pumpSpeed = newSpeed;
 
       const statusMap: Record<number, "idle" | "running" | "cleaning" | "error"> = {
@@ -146,10 +155,13 @@ export class FilterPumpThing {
   }
 
   /**
-   * Simulate filter health degradation and status changes
+   * Simulate filter health degradation and status changes.
+   * 
+   * TESTING MODE: Check interval set to 5000ms (5 seconds) for rapid testing.
+   * PRODUCTION MODE: Should be adjusted to 60000ms+ (60+ seconds) for realistic degradation tracking.
    */
   private startSimulation(): void {
-    // Degrade filter health based on pump speed
+    // Degrade filter health based on pump speed (TEST ONLY - unrealistic frequency)
     this.healthDegradationInterval = setInterval(() => {
       // Health degrades faster at higher speeds
       const degradationRate = (this.state.pumpSpeed / 100) * 0.5; // 0-0.5% per interval
@@ -157,7 +169,7 @@ export class FilterPumpThing {
 
       // Emit changes
       this.thing.emitPropertyChange("filterHealth");
-    }, 5000); // Check every 5 seconds
+    }, SAMPLING_CONFIG.FILTER_HEALTH_INTERVAL); // Configured via FILTER_HEALTH_INTERVAL env var
 
     // Simulate occasional status changes
     this.simulationInterval = setInterval(() => {

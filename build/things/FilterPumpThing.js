@@ -10,6 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FilterPumpThing = void 0;
+const sampling_config_1 = require("../config/sampling.config");
 class FilterPumpThing {
     constructor(runtime, proxyTD, modbusTD) {
         this.state = {
@@ -51,7 +52,15 @@ class FilterPumpThing {
             }));
             // Set up action handlers
             this.thing.setActionHandler("setPumpSpeed", (speed) => __awaiter(this, void 0, void 0, function* () {
-                const newSpeed = Math.max(0, Math.min(100, Number(speed)));
+                // Handle different input formats (string, number, or object)
+                let speedValue;
+                if (typeof speed === "object" && speed !== null && "speed" in speed) {
+                    speedValue = Number(speed.speed);
+                }
+                else {
+                    speedValue = Number(speed);
+                }
+                const newSpeed = Math.max(0, Math.min(100, speedValue));
                 this.state.pumpSpeed = newSpeed;
                 const statusMap = {
                     0: "idle",
@@ -102,17 +111,20 @@ class FilterPumpThing {
         });
     }
     /**
-     * Simulate filter health degradation and status changes
+     * Simulate filter health degradation and status changes.
+     *
+     * TESTING MODE: Check interval set to 5000ms (5 seconds) for rapid testing.
+     * PRODUCTION MODE: Should be adjusted to 60000ms+ (60+ seconds) for realistic degradation tracking.
      */
     startSimulation() {
-        // Degrade filter health based on pump speed
+        // Degrade filter health based on pump speed (TEST ONLY - unrealistic frequency)
         this.healthDegradationInterval = setInterval(() => {
             // Health degrades faster at higher speeds
             const degradationRate = (this.state.pumpSpeed / 100) * 0.5; // 0-0.5% per interval
             this.state.filterHealth = Math.max(0, this.state.filterHealth - degradationRate);
             // Emit changes
             this.thing.emitPropertyChange("filterHealth");
-        }, 5000); // Check every 5 seconds
+        }, sampling_config_1.SAMPLING_CONFIG.FILTER_HEALTH_INTERVAL); // Configured via FILTER_HEALTH_INTERVAL env var
         // Simulate occasional status changes
         this.simulationInterval = setInterval(() => {
             // If pump is running and speed > 0, keep it running
