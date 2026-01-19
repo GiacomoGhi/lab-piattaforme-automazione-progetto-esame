@@ -92,13 +92,13 @@ async function fetchSensorData() {
   try {
     // Fetch all properties at once using the WoT readallproperties endpoint
     const res = await fetch(`${BASE_URL}/waterqualitysensor/properties`);
-    
+
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
     }
 
     const data = await res.json();
-    
+
     // node-wot returns all properties in the response
     return {
       pH: data.pH !== undefined ? data.pH : 7.0,
@@ -115,13 +115,13 @@ async function fetchPumpData() {
   try {
     // Fetch all properties at once using the WoT readallproperties endpoint
     const res = await fetch(`${BASE_URL}/filterpump/properties`);
-    
+
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
     }
 
     const data = await res.json();
-    
+
     // node-wot returns all properties in the response
     return {
       speed: data.pumpSpeed !== undefined ? data.pumpSpeed : 0,
@@ -149,9 +149,8 @@ function updateSensorUI(data) {
     typeof data.temperature === "number"
       ? data.temperature
       : parseFloat(data.temperature);
-  document.getElementById("temp-value").textContent = `${tempValue.toFixed(
-    1
-  )}°C`;
+  document.getElementById("temp-value").textContent =
+    `${tempValue.toFixed(1)}°C`;
   const tempStatus = getParameterStatus("temperature", tempValue);
   updateStatusIndicator("temp-status", tempStatus);
   updateProgress("temp-progress", tempValue, 18, 32);
@@ -162,9 +161,8 @@ function updateSensorUI(data) {
     typeof data.oxygenLevel === "number"
       ? data.oxygenLevel
       : parseFloat(data.oxygenLevel);
-  document.getElementById("oxygen-value").textContent = `${oxygenValue.toFixed(
-    1
-  )} mg/L`;
+  document.getElementById("oxygen-value").textContent =
+    `${oxygenValue.toFixed(1)} mg/L`;
   const oxygenStatus = getParameterStatus("oxygenLevel", oxygenValue);
   updateStatusIndicator("oxygen-status", oxygenStatus);
   updateProgress("oxygen-progress", oxygenValue, 3, 12);
@@ -246,7 +244,7 @@ function checkAndAddAlert(param, value, status) {
 
   // Check if similar alert exists recently
   const recentAlert = alerts.find(
-    (a) => a.param === param && Date.now() - a.time < 10000
+    (a) => a.param === param && Date.now() - a.time < 10000,
   );
   if (recentAlert) return;
 
@@ -287,11 +285,11 @@ function renderAlerts() {
       (alert) => `
       <div class="alert-item ${alert.status}">
         <span class="alert-time">${new Date(
-          alert.time
+          alert.time,
         ).toLocaleTimeString()}</span>
         <span class="alert-message">${alert.message}</span>
       </div>
-    `
+    `,
     )
     .join("");
 }
@@ -305,7 +303,7 @@ async function setPumpSpeed(speed) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parseInt(speed)),
-      }
+      },
     );
 
     if (response.ok) {
@@ -327,7 +325,7 @@ async function startCleaningCycle() {
       `${BASE_URL}/filterpump/actions/cleaningCycle`,
       {
         method: "POST",
-      }
+      },
     );
 
     if (response.ok) {
@@ -346,9 +344,14 @@ async function startCleaningCycle() {
 
 async function stopPump() {
   try {
-    const response = await fetch(`${BASE_URL}/filterpump/actions/stopPump`, {
-      method: "POST",
-    });
+    const response = await fetch(
+      `${BASE_URL}/filterpump/actions/setPumpSpeed`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parseInt(0)),
+      },
+    );
 
     if (response.ok) {
       console.log("Pump stopped");

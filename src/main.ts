@@ -7,6 +7,7 @@ import { ModbusClientFactory } from "@node-wot/binding-modbus";
 
 import { WaterQualitySensorThing } from "./things/WaterQualitySensorThing";
 import { FilterPumpThing } from "./things/FilterPumpThing";
+import { WaterThing } from "./things/WaterThing";
 
 // ====================================
 // AQUARIUM MONITOR - ORCHESTRATOR
@@ -123,13 +124,19 @@ function startStaticFileServer(port: number = 3000): void {
   const wotRuntime = await servient.start();
 
   // Read TDs from files
+  const waterTD = getTDFromFile("./models/water.tm.json");
   const waterSensorTD = getTDFromFile("./models/water-quality-sensor.tm.json");
   const filterPumpProxyTD = getTDFromFile("./models/filter-pump.tm.json");
   const filterPumpModbusTD = getTDFromFile(
     "./models/filter-pump-modbus.td.json"
   );
 
-  // Create Water Quality Sensor (HTTP Thing)
+  // Create Water Digital Twin (source of truth for water state)
+  const water = new WaterThing(wotRuntime, waterTD);
+  await water.start();
+  console.log("✅ Water Digital Twin exposed (HTTP)\n");
+
+  // Create Water Quality Sensor (HTTP Thing) - subscribes to Water Digital Twin
   const waterSensor = new WaterQualitySensorThing(wotRuntime, waterSensorTD);
   await waterSensor.startAsync();
   console.log("✅ Water Quality Sensor exposed (HTTP)\n");

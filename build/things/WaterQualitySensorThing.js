@@ -21,18 +21,22 @@ const OPTIMAL_RANGES = {
  *
  * Exposes pH, temperature, and oxygenLevel properties.
  * Emits parameterAlert events when values are out of range.
+ *
+ * This sensor subscribes to the Water Digital Twin and reads its values.
+ * Architecture: Water (Digital Twin) → publishes → WaterQualitySensor (subscribes)
  */
 class WaterQualitySensorThing {
     constructor(runtime, td) {
+        this.consumedWater = null;
+        // Local cache of water values (updated via subscription)
         this.pH = 7.0;
         this.temperature = 25.0;
         this.oxygenLevel = 7.0;
-        this.simulationInterval = null;
         this.runtime = runtime;
         this.td = td;
     }
     /**
-     * Start the thing and begin simulating sensor readings
+     * Start the thing and subscribe to Water Digital Twin
      */
     startAsync() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -63,29 +67,74 @@ class WaterQualitySensorThing {
             }));
             yield this.thing.expose();
             console.log(`${this.td.title} thing started! Go to: http://localhost:8080/${(_a = this.td.title) === null || _a === void 0 ? void 0 : _a.toLowerCase()}`);
-            this.startSimulation();
+            // Subscribe to Water Digital Twin after a short delay to ensure it's ready
+            setTimeout(() => this.subscribeToWaterDigitalTwin(), 2000);
         });
     }
     /**
-     * Simulate sensor readings with realistic variations
+     * Subscribe to the Water Digital Twin to receive state updates
      */
-    startSimulation() {
-        this.simulationInterval = setInterval(() => {
-            // Simulate small variations in readings
-            this.pH += (Math.random() - 0.5) * 0.2;
-            this.pH = Math.max(5, Math.min(9, this.pH)); // Clamp between 5-9
-            this.temperature += (Math.random() - 0.5) * 0.5;
-            this.temperature = Math.max(18, Math.min(32, this.temperature)); // Clamp between 18-32
-            this.oxygenLevel += (Math.random() - 0.5) * 0.3;
-            this.oxygenLevel = Math.max(3, Math.min(12, this.oxygenLevel)); // Clamp between 3-12
-            // Check for alerts and emit events
-            this.checkAndEmitAlerts();
-            // Emit property changes
-            this.thing.emitPropertyChange("pH");
-            this.thing.emitPropertyChange("temperature");
-            this.thing.emitPropertyChange("oxygenLevel");
-            this.thing.emitPropertyChange("allParameters");
-        }, 3000); // Update every 3 seconds
+    subscribeToWaterDigitalTwin() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                console.log("[Sensor] 🔗 Connecting to Water Digital Twin...");
+                // Fetch the Water Thing Description
+                const waterTD = yield this.runtime.requestThingDescription("http://localhost:8080/water");
+                this.consumedWater = yield this.runtime.consume(waterTD);
+                console.log("[Sensor] ✅ Connected to Water Digital Twin");
+                // Subscribe to the waterStateChanged event (pub/sub pattern)
+                yield this.consumedWater.subscribeEvent("waterStateChanged", (data) => __awaiter(this, void 0, void 0, function* () {
+                    const event = (yield data.value());
+                    console.log(`[Sensor] 📨 Received water state change: ${event.parameter} = ${event.newValue}`);
+                    // Update local cache
+                    switch (event.parameter) {
+                        case "pH":
+                            this.pH = event.newValue;
+                            break;
+                        case "temperature":
+                            this.temperature = event.newValue;
+                            break;
+                        case "oxygenLevel":
+                            this.oxygenLevel = event.newValue;
+                            break;
+                    }
+                    // Check for alerts and emit events
+                    this.checkAndEmitAlerts();
+                    // Emit property changes to notify our subscribers
+                    this.thing.emitPropertyChange(event.parameter);
+                    this.thing.emitPropertyChange("allParameters");
+                }));
+                console.log("[Sensor] 📡 Subscribed to Water Digital Twin events");
+                // Initial read of all water properties
+                yield this.readInitialWaterState();
+            }
+            catch (error) {
+                console.error("[Sensor] ❌ Failed to connect to Water Digital Twin:", error);
+                console.log("[Sensor] ⏳ Will retry in 5 seconds...");
+                setTimeout(() => this.subscribeToWaterDigitalTwin(), 5000);
+            }
+        });
+    }
+    /**
+     * Read initial state from Water Digital Twin
+     */
+    readInitialWaterState() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.consumedWater)
+                return;
+            try {
+                const pHProp = yield this.consumedWater.readProperty("pH");
+                this.pH = Number(yield pHProp.value());
+                const tempProp = yield this.consumedWater.readProperty("temperature");
+                this.temperature = Number(yield tempProp.value());
+                const o2Prop = yield this.consumedWater.readProperty("oxygenLevel");
+                this.oxygenLevel = Number(yield o2Prop.value());
+                console.log(`[Sensor] 📖 Initial water state: pH=${this.pH.toFixed(2)}, temp=${this.temperature.toFixed(1)}°C, O₂=${this.oxygenLevel.toFixed(1)} mg/L`);
+            }
+            catch (error) {
+                console.error("[Sensor] Failed to read initial water state:", error);
+            }
+        });
     }
     /**
      * Check parameter values and emit alerts if necessary

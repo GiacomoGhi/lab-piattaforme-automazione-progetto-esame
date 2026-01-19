@@ -1,0 +1,68 @@
+{
+    "@context": [
+        "https://www.w3.org/2022/wot/td/v1.1",
+        {
+            "saref": "https://saref.etsi.org/core/"
+        }
+    ],
+    "@type": [
+        "saref:DigitalTwin"
+    ],
+    "title": "Water",
+    "description": "Digital Twin representing the aquarium water state. Acts as the source of truth for water parameters.",
+    "properties": {
+        "pH": {
+            "type": "number",
+            "description": "Current pH level of the water",
+            "minimum": 0,
+            "maximum": 14,
+            "observable": true,
+            "readOnly": false
+        },
+        "temperature": {
+            "type": "number",
+            "description": "Current water temperature in Celsius",
+            "unit": "celsius",
+            "minimum": 0,
+            "maximum": 40,
+            "observable": true,
+            "readOnly": false
+        },
+        "oxygenLevel": {
+            "type": "number",
+            "description": "Dissolved oxygen level in mg/L",
+            "minimum": 0,
+            "maximum": 20,
+            "observable": true,
+            "readOnly": false
+        }
+    },
+    "actions": {},
+    "events": {
+        "waterStateChanged": {
+            "description": "Emitted when any water parameter changes",
+            "data": {
+                "type": "object",
+                "properties": {
+                    "parameter": {
+                        "type": "string",
+                        "enum": [
+                            "pH",
+                            "temperature",
+                            "oxygenLevel"
+                        ]
+                    },
+                    "oldValue": {
+                        "type": "number"
+                    },
+                    "newValue": {
+                        "type": "number"
+                    },
+                    "timestamp": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}

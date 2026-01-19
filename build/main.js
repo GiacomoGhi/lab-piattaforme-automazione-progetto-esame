@@ -50,6 +50,7 @@ const binding_http_1 = require("@node-wot/binding-http");
 const binding_modbus_1 = require("@node-wot/binding-modbus");
 const WaterQualitySensorThing_1 = require("./things/WaterQualitySensorThing");
 const FilterPumpThing_1 = require("./things/FilterPumpThing");
+const WaterThing_1 = require("./things/WaterThing");
 const state = {
     lastAlertTime: 0,
     alertCooldown: 10000, // 10 seconds between alerts
@@ -135,10 +136,15 @@ function startStaticFileServer(port = 3000) {
         servient.addClientFactory(new binding_http_1.HttpClientFactory(null));
         const wotRuntime = yield servient.start();
         // Read TDs from files
+        const waterTD = getTDFromFile("./models/water.tm.json");
         const waterSensorTD = getTDFromFile("./models/water-quality-sensor.tm.json");
         const filterPumpProxyTD = getTDFromFile("./models/filter-pump.tm.json");
         const filterPumpModbusTD = getTDFromFile("./models/filter-pump-modbus.td.json");
-        // Create Water Quality Sensor (HTTP Thing)
+        // Create Water Digital Twin (source of truth for water state)
+        const water = new WaterThing_1.WaterThing(wotRuntime, waterTD);
+        yield water.start();
+        console.log("✅ Water Digital Twin exposed (HTTP)\n");
+        // Create Water Quality Sensor (HTTP Thing) - subscribes to Water Digital Twin
         const waterSensor = new WaterQualitySensorThing_1.WaterQualitySensorThing(wotRuntime, waterSensorTD);
         yield waterSensor.startAsync();
         console.log("✅ Water Quality Sensor exposed (HTTP)\n");

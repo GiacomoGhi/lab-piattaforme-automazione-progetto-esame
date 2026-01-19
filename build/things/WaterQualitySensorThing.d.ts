@@ -4,24 +4,31 @@ import WoT from "wot-typescript-definitions";
  *
  * Exposes pH, temperature, and oxygenLevel properties.
  * Emits parameterAlert events when values are out of range.
+ *
+ * This sensor subscribes to the Water Digital Twin and reads its values.
+ * Architecture: Water (Digital Twin) → publishes → WaterQualitySensor (subscribes)
  */
 export declare class WaterQualitySensorThing {
     private runtime;
     private td;
     private thing;
+    private consumedWater;
     private pH;
     private temperature;
     private oxygenLevel;
-    private simulationInterval;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription);
     /**
-     * Start the thing and begin simulating sensor readings
+     * Start the thing and subscribe to Water Digital Twin
      */
     startAsync(): Promise<void>;
     /**
-     * Simulate sensor readings with realistic variations
+     * Subscribe to the Water Digital Twin to receive state updates
      */
-    private startSimulation;
+    private subscribeToWaterDigitalTwin;
+    /**
+     * Read initial state from Water Digital Twin
+     */
+    private readInitialWaterState;
     /**
      * Check parameter values and emit alerts if necessary
      * Only emits the most critical alert to avoid concatenation issues
