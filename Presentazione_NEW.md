@@ -121,9 +121,17 @@ IF pH < 6.5 OR pH > 7.5 (ALERT) THEN
 
 #### Logica Temperatura Critica
 ```
-IF temperature > 26°C (ALERT) THEN
-  → Emette notifica critica
-  → Avvisa di controllare il sistema di raffreddamento
+Range ottimale: 24-26°C
+
+IF temperature ∈ [22, 24) OR (26, 28] (WARNING):
+  → Emette alert di warning
+  → Nessuna azione pompa
+
+IF temperature < 22°C OR temperature > 28°C (CRITICO):
+  → Aumenta velocità pompa di +15%
+  → Attiva correzione acqua automatica (±0.8/sec)
+  → Migliora la circolazione per distribuzione termica
+  → (Futuro: Integrazione pompa di calore per heating/cooling attivo)
 ```
 
 #### Logica Ossigeno Basso
@@ -150,7 +158,12 @@ OGNI 30 secondi:
     → Salva la data dell'ultimo ciclo
 ```
 
-Questo assicura che il filtro sia sempre mantenuto in buone condizioni.
+**Demo Mode - Accelerazione Degrado Filtro:**
+- Check ogni **1 secondo** (invece di 5 in produzione)
+- Rate di degradazione: 0-0.5% per check, max alla velocità pompa 100%
+- Da 100% → 50% (trigger cleaning): ~100 secondi (~1.5 minuti)
+
+Questo assicura che il filtro sia sempre mantenuto in buone condizioni e permette di osservare il ciclo di pulizia automatica in demo.
 
 ---
 

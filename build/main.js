@@ -192,8 +192,25 @@ function startStaticFileServer(port = 3000) {
                 yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
             }
             else if (alert.parameter === "temperature" && alert.status === "alert") {
-                // Temperature > 26°C - emit alert
-                console.log("🌡️ TEMPERATURE ALERT: Water temperature is critical! Check cooling system.");
+                // Temperature ranges:
+                // - Optimal: 24-26°C (no action)
+                // - Warning: 22-24 or 26-28°C (alert only)
+                // - Critical: < 22°C or > 28°C (activate pump)
+                // Read current temperature value to determine if it's critical
+                const allParams = yield consumedSensor.readProperty("allParameters");
+                const params = yield allParams.value();
+                const currentTemp = params.temperature;
+                const isCritical = currentTemp < 22 || currentTemp > 28;
+                if (isCritical) {
+                    // Critical temperature - activate pump for circulation
+                    const newSpeed = Math.min(100, speed + 15);
+                    console.log(`🌡️ TEMPERATURE CRITICAL (${currentTemp.toFixed(1)}°C): Activating pump for circulation (${newSpeed}%)`);
+                    yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
+                }
+                else {
+                    // Warning level temperature - alert only, no pump action
+                    console.log(`⚠️ TEMPERATURE WARNING (${currentTemp.toFixed(1)}°C): Out of optimal range (24-26°C)`);
+                }
             }
             else if (alert.parameter === "oxygenLevel" && alert.status === "alert") {
                 // Oxygen low - increase pump speed for better aeration

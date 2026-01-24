@@ -14,9 +14,10 @@ import { WaterThing } from "./things/WaterThing";
 // ====================================
 // Water Quality Sensor (HTTP) + Filter Pump (Modbus)
 // Logic:
-// - pH out of range (< 6.5 or > 7.5) → increase pump speed
-// - Temperature > 26°C → emit alert
-// - Low oxygen (< 6 mg/L) → increase pump speed
+// - pH out of range (< 6.5 or > 7.5) → increase pump speed +20%
+// - Temperature critical (< 22°C or > 28°C) → increase pump speed +15%
+// - Temperature warning (22-24 or 26-28°C) → alert only, no action
+// - Low oxygen (< 6 mg/L) → increase pump speed +25%
 // - Automatic daily cleaning cycle
 // ====================================
 
@@ -205,10 +206,27 @@ function startStaticFileServer(port: number = 3000): void {
       console.log(`🔄 pH critical - increasing pump speed to ${newSpeed}%`);
       await consumedPump.invokeAction("setPumpSpeed", newSpeed);
     } else if (alert.parameter === "temperature" && alert.status === "alert") {
-      // Temperature > 26°C - emit alert
-      console.log(
-        "🌡️ TEMPERATURE ALERT: Water temperature is critical! Check cooling system."
-      );
+      // Temperature ranges:
+      // - Optimal: 24-26°C (no action)
+      // - Warning: 22-24 or 26-28°C (alert only)
+      // - Critical: < 22°C or > 28°C (activate pump)
+      
+      // Read current temperature value to determine if it's critical
+      const allParams = await consumedSensor.readProperty("allParameters");
+      const params: any = await allParams.value();
+      const currentTemp = params.temperature;
+      
+      const isCritical = currentTemp < 22 || currentTemp > 28;
+      
+      if (isCritical) {
+        // Critical temperature - activate pump for circulation
+        const newSpeed = Math.min(100, speed + 15);
+        console.log(`🌡️ TEMPERATURE CRITICAL (${currentTemp.toFixed(1)}°C): Activating pump for circulation (${newSpeed}%)`);
+        await consumedPump.invokeAction("setPumpSpeed", newSpeed);
+      } else {
+        // Warning level temperature - alert only, no pump action
+        console.log(`⚠️ TEMPERATURE WARNING (${currentTemp.toFixed(1)}°C): Out of optimal range (24-26°C)`);
+      }
     } else if (alert.parameter === "oxygenLevel" && alert.status === "alert") {
       // Oxygen low - increase pump speed for better aeration
       const newSpeed = Math.min(100, speed + 25);

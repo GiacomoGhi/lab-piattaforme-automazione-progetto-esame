@@ -141,7 +141,7 @@ class FilterPumpThing {
             this.state.filterHealth = Math.max(0, this.state.filterHealth - degradationRate);
             // Emit changes
             this.thing.emitPropertyChange("filterHealth");
-        }, 5000); // Check every 5 seconds
+        }, 1000); // Check every 1 second (accelerated for demo)
         // Simulate occasional status changes
         this.simulationInterval = setInterval(() => {
             // If pump is running and speed > 0, keep it running
