@@ -359,9 +359,16 @@ function getParameterStatus(param, value) {
   const range = OPTIMAL_RANGES[param];
   if (!range) return "ok";
 
-  if (value < range.warningMin || value > range.warningMax) {
+  const optimal = range;
+  const rangeSize = optimal.max - optimal.min;
+  const margin = rangeSize * 0.15; // 15% beyond optimal range
+  
+  const criticalMin = optimal.min - margin;
+  const criticalMax = optimal.max + margin;
+
+  if (value < criticalMin || value > criticalMax) {
     return "alert";
-  } else if (value < range.min || value > range.max) {
+  } else if (value < optimal.min || value > optimal.max) {
     return "warning";
   }
   return "ok";
@@ -432,14 +439,23 @@ function renderAlerts() {
 
   container.innerHTML = alerts
     .map(
-      (alert) => `
+      (alert) => {
+        const date = new Date(alert.time);
+        const dd = String(date.getDate()).padStart(2, '0');
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const yyyy = date.getFullYear();
+        const hh = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        const ss = String(date.getSeconds()).padStart(2, '0');
+        const formattedTime = `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+        
+        return `
       <div class="alert-item ${alert.status}">
-        <span class="alert-time">${new Date(
-          alert.time,
-        ).toLocaleTimeString()}</span>
+        <span class="alert-time">${formattedTime}</span>
         <span class="alert-message">${alert.message}</span>
       </div>
-    `,
+    `;
+      }
     )
     .join("");
 }

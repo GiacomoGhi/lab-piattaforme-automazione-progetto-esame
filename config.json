@@ -1,29 +1,29 @@
 {
-  "mode": "demo",
+  "mode": "production",
   "description": "Application Configuration - Optimal Ranges and Modes",
   "parameters": {
     "pH": {
       "unit": "pH",
       "description": "Water pH Level",
       "optimal": {
-        "min": 4,
-        "max": 10
+        "min": 6,
+        "max": 8
       }
     },
     "temperature": {
       "unit": "°C",
       "description": "Water Temperature",
       "optimal": {
-        "min": 20,
-        "max": 35
+        "min": 23,
+        "max": 26
       }
     },
     "oxygenLevel": {
       "unit": "mg/L",
       "description": "Dissolved Oxygen Level",
       "optimal": {
-        "min": 4,
-        "max": 10
+        "min": 6,
+        "max": 8
       }
     }
   },
