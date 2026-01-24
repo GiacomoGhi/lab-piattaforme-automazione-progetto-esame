@@ -161,6 +161,12 @@ function setupEventListeners() {
   document.getElementById("stop-btn").addEventListener("click", async () => {
     await stopPump();
   });
+
+  // Reset configuration button
+  const resetBtn = document.getElementById("reset-config-btn");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetConfiguration);
+  }
 }
 
 /**
@@ -202,6 +208,68 @@ async function saveConfiguration() {
   } catch (error) {
     console.error("Error saving configuration:", error);
     alert("❌ Error saving configuration: " + error.message);
+  }
+}
+
+/**
+ * Reset configuration to defaults
+ */
+async function resetConfiguration() {
+  if (!confirm("⚠️ Are you sure you want to reset all parameters to defaults?")) {
+    return;
+  }
+
+  try {
+    // Fetch default config from server (fresh from file)
+    const response = await fetch(`${CONFIG_API_URL}/api/config`);
+    if (!response.ok) throw new Error("Failed to fetch configuration");
+    
+    const config = await response.json();
+    
+    // Create default values based on original config structure
+    const defaultConfig = {
+      mode: "demo",
+      description: config.description,
+      parameters: {},
+      modes: config.modes
+    };
+
+    // Reset all parameters to their hardcoded defaults
+    defaultConfig.parameters.pH = {
+      unit: "pH",
+      description: "Water pH Level",
+      optimal: { min: 6.5, max: 7.5 }
+    };
+    defaultConfig.parameters.temperature = {
+      unit: "°C",
+      description: "Water Temperature",
+      optimal: { min: 24, max: 26 }
+    };
+    defaultConfig.parameters.oxygenLevel = {
+      unit: "mg/L",
+      description: "Dissolved Oxygen Level",
+      optimal: { min: 6, max: 8 }
+    };
+
+    // Save reset config to server
+    const saveResponse = await fetch(`${CONFIG_API_URL}/api/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(defaultConfig),
+    });
+
+    if (saveResponse.ok) {
+      console.log("✅ Configuration reset to defaults");
+      alert("✅ Configuration reset to defaults!");
+      // Reload to ensure UI reflects default values
+      await loadConfiguration();
+    } else {
+      console.error("Failed to reset configuration");
+      alert("❌ Failed to reset configuration");
+    }
+  } catch (error) {
+    console.error("Error resetting configuration:", error);
+    alert("❌ Error resetting configuration: " + error.message);
   }
 }
 
