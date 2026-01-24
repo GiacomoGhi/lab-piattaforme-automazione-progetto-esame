@@ -291,39 +291,18 @@ function startAPIServer(port = 3001) {
             const currentSpeed = yield consumedPump.readProperty("pumpSpeed");
             const speedValue = yield currentSpeed.value();
             const speed = Number(speedValue);
-            // React based on parameter
-            if (alert.parameter === "pH" && alert.status === "alert") {
-                // pH critical - increase pump speed to improve water circulation
-                const newSpeed = Math.min(100, speed + 20);
-                console.log(`🔄 pH critical - increasing pump speed to ${newSpeed}%`);
-                yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
+            // Pump speed based on alert level:
+            // - warning (yellow): 15% pump speed
+            // - alert (red): 40% pump speed
+            if (alert.status === "warning") {
+                // Warning level (yellow) - activate pump at 15%
+                console.log(`⚠️ WARNING (${alert.parameter}): Setting pump speed to 15%`);
+                yield consumedPump.invokeAction("setPumpSpeed", 15);
             }
-            else if (alert.parameter === "temperature" && alert.status === "alert") {
-                // Temperature ranges:
-                // - Optimal: 24-26°C (no action)
-                // - Warning: 22-24 or 26-28°C (alert only)
-                // - Critical: < 22°C or > 28°C (activate pump)
-                // Read current temperature value to determine if it's critical
-                const allParams = yield consumedSensor.readProperty("allParameters");
-                const params = yield allParams.value();
-                const currentTemp = params.temperature;
-                const isCritical = currentTemp < 22 || currentTemp > 28;
-                if (isCritical) {
-                    // Critical temperature - activate pump for circulation
-                    const newSpeed = Math.min(100, speed + 15);
-                    console.log(`🌡️ TEMPERATURE CRITICAL (${currentTemp.toFixed(1)}°C): Activating pump for circulation (${newSpeed}%)`);
-                    yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
-                }
-                else {
-                    // Warning level temperature - alert only, no pump action
-                    console.log(`⚠️ TEMPERATURE WARNING (${currentTemp.toFixed(1)}°C): Out of optimal range (24-26°C)`);
-                }
-            }
-            else if (alert.parameter === "oxygenLevel" && alert.status === "alert") {
-                // Oxygen low - increase pump speed for better aeration
-                const newSpeed = Math.min(100, speed + 25);
-                console.log(`💨 Oxygen low - increasing pump speed to ${newSpeed}%`);
-                yield consumedPump.invokeAction("setPumpSpeed", newSpeed);
+            else if (alert.status === "alert") {
+                // Critical level (red) - activate pump at 40%
+                console.log(`🚨 CRITICAL (${alert.parameter}): Setting pump speed to 40%`);
+                yield consumedPump.invokeAction("setPumpSpeed", 40);
             }
         }));
         // Daily automatic cleaning cycle check
