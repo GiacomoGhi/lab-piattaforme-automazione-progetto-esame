@@ -1,0 +1,44 @@
+{
+  "mode": "demo",
+  "description": "Application Configuration - Optimal Ranges and Modes",
+  "parameters": {
+    "pH": {
+      "unit": "pH",
+      "description": "Water pH Level",
+      "optimal": {
+        "min": 4,
+        "max": 10
+      }
+    },
+    "temperature": {
+      "unit": "°C",
+      "description": "Water Temperature",
+      "optimal": {
+        "min": 20,
+        "max": 35
+      }
+    },
+    "oxygenLevel": {
+      "unit": "mg/L",
+      "description": "Dissolved Oxygen Level",
+      "optimal": {
+        "min": 4,
+        "max": 10
+      }
+    }
+  },
+  "modes": {
+    "demo": {
+      "description": "Demo mode with accelerated simulation",
+      "samplingIntervalMs": 3000,
+      "degradationIntervalMs": 1000,
+      "filterDegradationIntervalMs": 1000
+    },
+    "production": {
+      "description": "Production mode with real sensors",
+      "samplingIntervalMs": 300000,
+      "degradationIntervalMs": 60000,
+      "filterDegradationIntervalMs": 5000
+    }
+  }
+}

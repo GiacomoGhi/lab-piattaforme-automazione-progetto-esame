@@ -2,10 +2,11 @@
 // Polls the Things via HTTP and updates the UI
 
 const BASE_URL = "http://localhost:8080";
+const CONFIG_API_URL = "http://localhost:3001";
 const POLL_INTERVAL = 2000; // ms
 
-// Optimal ranges for status calculation
-const OPTIMAL_RANGES = {
+// Configuration loaded from API
+let OPTIMAL_RANGES = {
   pH: { min: 6.5, max: 7.5, warningMin: 6.0, warningMax: 8.0 },
   temperature: { min: 24, max: 26, warningMin: 22, warningMax: 28 },
   oxygenLevel: { min: 6, max: 8, warningMin: 5, warningMax: 10 },
@@ -16,8 +17,11 @@ const alerts = [];
 const MAX_ALERTS = 10;
 
 // Initialize
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("🐠 Aquarium Monitor UI starting...");
+
+  // Load configuration from API
+  await loadConfiguration();
 
   // Set up event listeners
   setupEventListeners();
@@ -26,7 +30,111 @@ document.addEventListener("DOMContentLoaded", () => {
   startPolling();
 });
 
+/**
+ * Load configuration from API and update UI
+ */
+async function loadConfiguration() {
+  try {
+    const response = await fetch(`${CONFIG_API_URL}/api/config`);
+    if (!response.ok) throw new Error("Failed to load configuration");
+    
+    const config = await response.json();
+    console.log("✅ Configuration loaded:", config);
+
+    // Update OPTIMAL_RANGES from config
+    for (const [paramName, paramConfig] of Object.entries(config.parameters)) {
+      OPTIMAL_RANGES[paramName] = {
+        min: paramConfig.optimal.min,
+        max: paramConfig.optimal.max,
+      };
+    }
+
+    // Update mode selector
+    document.getElementById("mode-select").value = config.mode;
+
+    // Populate parameter configuration UI
+    populateParametersConfig(config.parameters);
+  } catch (error) {
+    console.error("❌ Error loading configuration:", error);
+    console.warn("⚠️ Using default configuration");
+  }
+}
+
+/**
+ * Populate the parameters configuration section
+ */
+function populateParametersConfig(parameters) {
+  const container = document.getElementById("parameters-config");
+  container.innerHTML = "";
+
+  for (const [paramName, paramConfig] of Object.entries(parameters)) {
+    const paramDiv = document.createElement("div");
+    paramDiv.className = "parameter-config";
+    paramDiv.innerHTML = `
+      <h4>${paramConfig.description} <span class="unit">(${paramConfig.unit})</span></h4>
+      <div class="range-input">
+        <label>Min:</label>
+        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="min" value="${paramConfig.optimal.min}">
+      </div>
+      <div class="range-input">
+        <label>Max:</label>
+        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="max" value="${paramConfig.optimal.max}">
+      </div>
+    `;
+    container.appendChild(paramDiv);
+  }
+
+  // Add Save button at the end
+  const saveDiv = document.createElement("div");
+  saveDiv.style.gridColumn = "1 / -1";
+  saveDiv.style.marginTop = "20px";
+  saveDiv.innerHTML = `
+    <button id="save-config-btn" style="
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #00d9ff, #0066cc);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    ">💾 Save Configuration</button>
+  `;
+  container.appendChild(saveDiv);
+
+  // Add event listener to save button
+  document.getElementById("save-config-btn").addEventListener("click", saveConfiguration);
+}
+
 function setupEventListeners() {
+  // Mode selector
+  const modeSelect = document.getElementById("mode-select");
+  if (modeSelect) {
+    modeSelect.addEventListener("change", async (e) => {
+      const newMode = e.target.value;
+      console.log(`🔄 Changing mode to: ${newMode}`);
+      try {
+        const response = await fetch(`${CONFIG_API_URL}/api/mode`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: newMode }),
+        });
+        if (response.ok) {
+          console.log(`✅ Mode changed to: ${newMode}`);
+        } else {
+          console.error("Failed to change mode");
+          // Revert selector
+          await loadConfiguration();
+        }
+      } catch (error) {
+        console.error("Error changing mode:", error);
+        // Revert selector
+        await loadConfiguration();
+      }
+    });
+  }
+
   // Speed slider
   const speedSlider = document.getElementById("speed-slider");
   speedSlider.addEventListener("input", (e) => {
@@ -53,6 +161,48 @@ function setupEventListeners() {
   document.getElementById("stop-btn").addEventListener("click", async () => {
     await stopPump();
   });
+}
+
+/**
+ * Save configuration changes to the server
+ */
+async function saveConfiguration() {
+  try {
+    // Gather all input values
+    const inputs = document.querySelectorAll(".param-input");
+    const config = await fetch(`${CONFIG_API_URL}/api/config`).then(r => r.json());
+
+    // Update config with new values from inputs
+    inputs.forEach(input => {
+      const paramName = input.dataset.param;
+      const bound = input.dataset.bound;
+      const value = parseFloat(input.value);
+
+      if (config.parameters[paramName]) {
+        config.parameters[paramName].optimal[bound] = value;
+      }
+    });
+
+    // Send updated config to server
+    const response = await fetch(`${CONFIG_API_URL}/api/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+
+    if (response.ok) {
+      console.log("✅ Configuration saved successfully");
+      alert("✅ Configuration saved! Changes will apply to new measurements.");
+      // Reload to ensure UI reflects saved values
+      await loadConfiguration();
+    } else {
+      console.error("Failed to save configuration");
+      alert("❌ Failed to save configuration");
+    }
+  } catch (error) {
+    console.error("Error saving configuration:", error);
+    alert("❌ Error saving configuration: " + error.message);
+  }
 }
 
 function startPolling() {

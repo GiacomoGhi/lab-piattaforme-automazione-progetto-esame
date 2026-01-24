@@ -118,6 +118,28 @@
           <p class="no-alerts">No alerts yet</p>
         </div>
       </div>
+
+      <!-- Configuration Section -->
+      <div class="card config-card">
+        <h2>⚙️ Configuration</h2>
+        <div class="config-section">
+          <div class="mode-selector">
+            <label>Mode:</label>
+            <select id="mode-select">
+              <option value="demo">🎮 Demo</option>
+              <option value="production">🏭 Production</option>
+            </select>
+          </div>
+
+          <div class="parameters-config" id="parameters-config">
+            <!-- Dynamically populated from config.json -->
+          </div>
+
+          <button id="reset-config-btn" class="btn btn-secondary">
+            🔄 Reset to Defaults
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Import JS -->

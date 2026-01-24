@@ -124,11 +124,118 @@ function startStaticFileServer(port = 3000) {
         console.log(`   Open: http://localhost:${port}\n`);
     });
 }
+/**
+ * Start API server for configuration management
+ */
+function startAPIServer(port = 3001) {
+    const { loadConfig } = require("./utils/configManager");
+    const server = http.createServer((req, res) => {
+        // Enable CORS
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        if (req.method === "OPTIONS") {
+            res.writeHead(200);
+            res.end();
+            return;
+        }
+        // GET /api/config - Return current configuration
+        if (req.method === "GET" && req.url === "/api/config") {
+            try {
+                const config = loadConfig();
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify(config, null, 2));
+            }
+            catch (error) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+            return;
+        }
+        // GET /api/mode - Return current mode
+        if (req.method === "GET" && req.url === "/api/mode") {
+            try {
+                const config = loadConfig();
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ mode: config.mode }));
+            }
+            catch (error) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+            return;
+        }
+        // POST /api/mode - Change mode (demo/production)
+        if (req.method === "POST" && req.url === "/api/mode") {
+            let body = "";
+            req.on("data", (chunk) => {
+                body += chunk.toString();
+            });
+            req.on("end", () => {
+                try {
+                    const data = JSON.parse(body);
+                    const newMode = data.mode;
+                    if (!newMode || (newMode !== "demo" && newMode !== "production")) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: "Invalid mode. Must be 'demo' or 'production'" }));
+                        return;
+                    }
+                    // Load config and update mode
+                    const config = loadConfig();
+                    config.mode = newMode;
+                    // Save updated config back to file
+                    const configPath = path.join(__dirname, "../config.json");
+                    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+                    console.log(`🔄 Mode changed to: ${newMode}`);
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ mode: newMode, message: `Mode changed to ${newMode}` }));
+                }
+                catch (error) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: error.message }));
+                }
+            });
+            return;
+        }
+        // POST /api/config - Update configuration
+        if (req.method === "POST" && req.url === "/api/config") {
+            let body = "";
+            req.on("data", (chunk) => {
+                body += chunk.toString();
+            });
+            req.on("end", () => {
+                try {
+                    const newConfig = JSON.parse(body);
+                    // Save updated config to file
+                    const configPath = path.join(__dirname, "../config.json");
+                    fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
+                    console.log("📝 Configuration updated from API");
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ message: "Configuration saved successfully", config: newConfig }));
+                }
+                catch (error) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: error.message }));
+                }
+            });
+            return;
+        }
+        // Default 404
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not Found" }));
+    });
+    server.listen(port, () => {
+        console.log(`📡 API server listening on http://localhost:${port}`);
+        console.log(`   GET http://localhost:${port}/api/config\n`);
+    });
+}
 (function main() {
     return __awaiter(this, void 0, void 0, function* () {
         console.log("🐠 Starting Aquarium Monitor System...\n");
         // Start static file server (serves index.html, www/*, etc.)
         startStaticFileServer(3000);
+        // Start API server (provides /api/config endpoint)
+        startAPIServer(3001);
         // Create servient with HTTP server and Modbus client
         const servient = new core_1.Servient();
         servient.addServer(new binding_http_1.HttpServer({ port: 8080 }));
