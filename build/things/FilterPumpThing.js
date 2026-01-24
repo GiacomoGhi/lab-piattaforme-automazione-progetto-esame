@@ -10,19 +10,27 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FilterPumpThing = void 0;
+const OPTIMAL_VALUES = {
+    pH: 7.0,
+    temperature: 25.0,
+    oxygenLevel: 7.0,
+};
 class FilterPumpThing {
-    constructor(runtime, proxyTD, modbusTD) {
+    constructor(runtime, proxyTD, modbusTD, waterThing) {
+        this.waterThing = null;
         this.state = {
-            pumpSpeed: 30,
+            pumpSpeed: 0,
             filterStatus: "idle",
             filterHealth: 100,
             lastCleaningTime: new Date().toISOString(),
         };
         this.simulationInterval = null;
         this.healthDegradationInterval = null;
+        this.waterCorrectionInterval = null;
         this.runtime = runtime;
         this.proxyTD = proxyTD;
         this.modbusTD = modbusTD;
+        this.waterThing = waterThing || null;
     }
     /**
      * Start the filter pump thing
@@ -60,6 +68,8 @@ class FilterPumpThing {
                     speedValue = params;
                 }
                 const newSpeed = Math.max(0, Math.min(100, Number(speedValue)));
+                const wasRunning = this.state.pumpSpeed > 0;
+                const nowRunning = newSpeed > 0;
                 this.state.pumpSpeed = newSpeed;
                 const statusMap = {
                     0: "idle",
@@ -68,9 +78,20 @@ class FilterPumpThing {
                 };
                 if (newSpeed === 0) {
                     this.state.filterStatus = "idle";
+                    // Pump turning off - stop water correction
+                    this.stopWaterCorrection();
+                    // Start water degradation if available
+                    if (this.waterThing) {
+                        this.waterThing.startDegradationSimulation();
+                    }
                 }
                 else if (this.state.filterStatus !== "cleaning") {
                     this.state.filterStatus = "running";
+                    // Pump turning on - start water correction
+                    if (!wasRunning && nowRunning && this.waterThing) {
+                        this.waterThing.stopDegradationSimulation();
+                        this.startWaterCorrection();
+                    }
                 }
                 console.log(`⚙️ Pump speed set to ${newSpeed}%`);
                 // Emit property change
@@ -143,6 +164,87 @@ class FilterPumpThing {
         if (this.healthDegradationInterval) {
             clearInterval(this.healthDegradationInterval);
         }
+        if (this.waterCorrectionInterval) {
+            clearInterval(this.waterCorrectionInterval);
+        }
+    }
+    /**
+     * Start water correction (pump running)
+     * Updates water parameters to move towards optimal values
+     */
+    startWaterCorrection() {
+        console.log("[Pump] 💧 Starting water correction...");
+        if (this.waterCorrectionInterval) {
+            clearInterval(this.waterCorrectionInterval);
+        }
+        this.waterCorrectionInterval = setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            if (!this.waterThing || this.state.pumpSpeed === 0) {
+                this.stopWaterCorrection();
+                return;
+            }
+            const currentState = this.waterThing.getState();
+            // Calculate correction for each parameter
+            const corrections = {};
+            for (const [param, optimalValue] of Object.entries(OPTIMAL_VALUES)) {
+                const currentValue = currentState[param];
+                const delta = currentValue - optimalValue;
+                let correction = 0;
+                if (Math.abs(delta) < 0.01) {
+                    correction = 0; // Already optimal
+                }
+                else if (delta > 0) {
+                    // Above optimal - subtract (max -0.8)
+                    correction = -Math.min(0.8, delta);
+                }
+                else {
+                    // Below optimal - add (max +0.8)
+                    correction = Math.min(0.8, Math.abs(delta));
+                }
+                if (Math.abs(correction) > 0.01) {
+                    corrections[param] = currentValue + correction;
+                }
+            }
+            // Apply corrections
+            if (Object.keys(corrections).length > 0) {
+                yield this.waterThing.setState(corrections);
+            }
+            // Check if all parameters are optimal
+            if (this.waterThing.allParametersOptimal()) {
+                console.log("[Pump] ✨ All water parameters are optimal! Turning off pump...");
+                yield this.setPumpSpeed(0);
+            }
+        }), 1000); // Every second
+    }
+    /**
+     * Stop water correction
+     */
+    stopWaterCorrection() {
+        if (this.waterCorrectionInterval) {
+            clearInterval(this.waterCorrectionInterval);
+            this.waterCorrectionInterval = null;
+        }
+    }
+    /**
+     * Set pump speed programmatically
+     */
+    setPumpSpeed(speed) {
+        return __awaiter(this, void 0, void 0, function* () {
+            this.state.pumpSpeed = Math.max(0, Math.min(100, speed));
+            const wasRunning = speed > 0;
+            const nowRunning = this.state.pumpSpeed > 0;
+            if (this.state.pumpSpeed === 0) {
+                this.state.filterStatus = "idle";
+                this.stopWaterCorrection();
+                if (this.waterThing) {
+                    this.waterThing.startDegradationSimulation();
+                }
+            }
+            else {
+                this.state.filterStatus = "running";
+            }
+            this.thing.emitPropertyChange("pumpSpeed");
+            this.thing.emitPropertyChange("filterStatus");
+        });
     }
     /**
      * Get current state for external use

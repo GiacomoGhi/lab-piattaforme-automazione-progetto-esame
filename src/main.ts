@@ -137,18 +137,24 @@ function startStaticFileServer(port: number = 3000): void {
   console.log("✅ Water Digital Twin exposed (HTTP)\n");
 
   // Create Water Quality Sensor (HTTP Thing) - subscribes to Water Digital Twin
-  const waterSensor = new WaterQualitySensorThing(wotRuntime, waterSensorTD);
+  // Using 3 second sampling interval for demo (configurable 3s to 30min)
+  const waterSensor = new WaterQualitySensorThing(wotRuntime, waterSensorTD, 3000);
   await waterSensor.startAsync();
   console.log("✅ Water Quality Sensor exposed (HTTP)\n");
 
-  // Create Filter Pump (Modbus Proxy Thing)
+  // Create Filter Pump (Modbus Proxy Thing) - pass water reference for correction logic
   const filterPump = new FilterPumpThing(
     wotRuntime,
     filterPumpProxyTD,
-    filterPumpModbusTD
+    filterPumpModbusTD,
+    water
   );
   await filterPump.start();
   console.log("✅ Filter Pump exposed (HTTP Proxy → Modbus)\n");
+
+  // Start initial water degradation simulation (pump starts off)
+  water.startDegradationSimulation();
+  console.log("🌊 Water degradation simulation started\n");
 
   // Create HTTP client to consume things for orchestration
   const clientServient = new Servient();
@@ -267,4 +273,13 @@ function startStaticFileServer(port: number = 3000): void {
   console.log("🎮 Aquarium Monitor running. Press Ctrl+C to stop.");
   console.log("⚠️  Make sure the Modbus mock server is running!");
   console.log("    Run: npx ts-node src/mock/ModbusFilterPumpMockServer.ts\n");
+
+  // Handle graceful shutdown
+  process.on("SIGINT", () => {
+    console.log("\n\n🛑 Shutting down...");
+    water.stop();
+    waterSensor.stop();
+    filterPump.stop();
+    process.exit(0);
+  });
 })();

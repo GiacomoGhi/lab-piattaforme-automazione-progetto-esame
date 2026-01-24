@@ -35,9 +35,16 @@ export class WaterQualitySensorThing {
   private temperature: number = 25.0;
   private oxygenLevel: number = 7.0;
 
-  constructor(runtime: typeof WoT, td: WoT.ThingDescription) {
+  // Sampling configuration (in milliseconds)
+  private samplingInterval: number = 3000; // Default 3 seconds for demo
+  private samplingTimer: NodeJS.Timeout | null = null;
+
+  constructor(runtime: typeof WoT, td: WoT.ThingDescription, samplingIntervalMs?: number) {
     this.runtime = runtime;
     this.td = td;
+    if (samplingIntervalMs) {
+      this.samplingInterval = samplingIntervalMs;
+    }
   }
 
   /**
@@ -131,6 +138,9 @@ export class WaterQualitySensorThing {
       );
 
       console.log("[Sensor] 📡 Subscribed to Water Digital Twin events");
+
+      // Start periodic sampling
+      this.startSampling();
 
       // Initial read of all water properties
       await this.readInitialWaterState();
@@ -268,5 +278,85 @@ export class WaterQualitySensorThing {
       temperature: this.temperature,
       oxygenLevel: this.oxygenLevel,
     };
+  }
+
+  /**
+   * Set sampling interval (in milliseconds)
+   * Valid range: 3000 (3 sec) to 1800000 (30 min)
+   */
+  public setSamplingInterval(intervalMs: number): void {
+    const MIN_INTERVAL = 3000; // 3 seconds
+    const MAX_INTERVAL = 1800000; // 30 minutes
+
+    if (intervalMs < MIN_INTERVAL || intervalMs > MAX_INTERVAL) {
+      console.warn(
+        `[Sensor] ⚠️ Sampling interval ${intervalMs}ms out of range [${MIN_INTERVAL}-${MAX_INTERVAL}]. Using default 3s.`
+      );
+      this.samplingInterval = MIN_INTERVAL;
+    } else {
+      this.samplingInterval = intervalMs;
+      console.log(`[Sensor] 📊 Sampling interval set to ${intervalMs}ms`);
+    }
+
+    // Restart sampling with new interval
+    if (this.consumedWater) {
+      this.startSampling();
+    }
+  }
+
+  /**
+   * Start periodic sampling of water parameters
+   */
+  private startSampling(): void {
+    // Clear existing timer
+    if (this.samplingTimer) {
+      clearInterval(this.samplingTimer);
+    }
+
+    console.log(`[Sensor] 📡 Starting periodic sampling every ${this.samplingInterval}ms`);
+
+    this.samplingTimer = setInterval(async () => {
+      if (!this.consumedWater) return;
+
+      try {
+        // Read individual properties (allParameters not available when consuming)
+        const pHProp = await this.consumedWater.readProperty("pH");
+        this.pH = Number(await pHProp.value());
+
+        const tempProp = await this.consumedWater.readProperty("temperature");
+        this.temperature = Number(await tempProp.value());
+
+        const o2Prop = await this.consumedWater.readProperty("oxygenLevel");
+        this.oxygenLevel = Number(await o2Prop.value());
+
+        // Emit property changes (cast to any to avoid type issues)
+        (this.thing.emitPropertyChange as any)("pH");
+        (this.thing.emitPropertyChange as any)("temperature");
+        (this.thing.emitPropertyChange as any)("oxygenLevel");
+        (this.thing.emitPropertyChange as any)("allParameters");
+
+        // Check and emit alerts
+        this.checkAndEmitAlerts();
+      } catch (error) {
+        console.error("[Sensor] ❌ Error during sampling:", error);
+      }
+    }, this.samplingInterval);
+  }
+
+  /**
+   * Stop periodic sampling
+   */
+  private stopSampling(): void {
+    if (this.samplingTimer) {
+      clearInterval(this.samplingTimer);
+      this.samplingTimer = null;
+    }
+  }
+
+  /**
+   * Stop the sensor
+   */
+  public stop(): void {
+    this.stopSampling();
   }
 }

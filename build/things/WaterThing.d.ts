@@ -1,22 +1,13 @@
 import WoT from "wot-typescript-definitions";
 import { WaterState } from "../types/WaterTypes";
-/**
- * WaterThing - Digital Twin representing the aquarium water state.
- *
- * This Thing acts as the source of truth for water parameters.
- * It exposes pH, temperature, and oxygenLevel as read/write properties.
- * Other Things (like WaterQualitySensor) subscribe to this Thing's events.
- *
- * Architecture:
- * - WaterThing (Digital Twin) ← publishes state changes
- * - WaterQualitySensor ← subscribes and reads from WaterThing
- * - FilterPump ← can affect water state (future: via ModbusMockServer)
- */
 export declare class WaterThing {
     private runtime;
     private td;
     private thing;
     private state;
+    private degradationConfig;
+    private degradationInterval;
+    private simulationActive;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription);
     /**
      * Start the Water Digital Twin
@@ -38,4 +29,20 @@ export declare class WaterThing {
      * Programmatically update state (for use by other components like mock server)
      */
     setState(updates: Partial<WaterState>): Promise<void>;
+    /**
+     * Start degradation simulation (called when pump turns off)
+     */
+    startDegradationSimulation(): void;
+    /**
+     * Stop degradation simulation and prepare for next cycle
+     */
+    stopDegradationSimulation(): void;
+    /**
+     * Check if all parameters are within optimal range
+     */
+    allParametersOptimal(): boolean;
+    /**
+     * Stop everything on shutdown
+     */
+    stop(): void;
 }
