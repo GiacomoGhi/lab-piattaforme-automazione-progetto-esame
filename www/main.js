@@ -70,15 +70,20 @@ function populateParametersConfig(parameters) {
   for (const [paramName, paramConfig] of Object.entries(parameters)) {
     const paramDiv = document.createElement("div");
     paramDiv.className = "parameter-config";
+    const configMin = paramConfig.configurable.min;
+    const configMax = paramConfig.configurable.max;
     paramDiv.innerHTML = `
       <h4>${paramConfig.description} <span class="unit">(${paramConfig.unit})</span></h4>
+      <div class="config-limits" style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">
+        Configurable range: ${configMin} - ${configMax}
+      </div>
       <div class="range-input">
         <label>Min:</label>
-        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="min" value="${paramConfig.optimal.min}">
+        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="min" value="${paramConfig.optimal.min}" min="${configMin}" max="${configMax}" title="Min must be less than Max (${configMin}-${configMax})">
       </div>
       <div class="range-input">
         <label>Max:</label>
-        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="max" value="${paramConfig.optimal.max}">
+        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="max" value="${paramConfig.optimal.max}" min="${configMin}" max="${configMax}" title="Max must be greater than Min (${configMin}-${configMax})">
       </div>
     `;
     container.appendChild(paramDiv);
@@ -177,6 +182,59 @@ async function saveConfiguration() {
     // Gather all input values
     const inputs = document.querySelectorAll(".param-input");
     const config = await fetch(`${CONFIG_API_URL}/api/config`).then(r => r.json());
+
+    // Validate all inputs before saving
+    let hasErrors = false;
+    const errorParams = [];
+
+    inputs.forEach(input => {
+      const paramName = input.dataset.param;
+      const bound = input.dataset.bound;
+      const value = parseFloat(input.value);
+      const paramConfig = config.parameters[paramName];
+
+      if (!paramConfig) return;
+
+      // Get current values
+      const currentMin = parseFloat(document.querySelector(`[data-param="${paramName}"][data-bound="min"]`).value);
+      const currentMax = parseFloat(document.querySelector(`[data-param="${paramName}"][data-bound="max"]`).value);
+
+      // Validate: min >= max or max <= min or min = max
+      if (currentMin >= currentMax) {
+        hasErrors = true;
+        if (!errorParams.includes(paramName)) {
+          errorParams.push(paramName);
+        }
+        return;
+      }
+
+      // Validate: values within configurable range
+      if (currentMin < paramConfig.configurable.min || currentMin > paramConfig.configurable.max) {
+        hasErrors = true;
+        if (!errorParams.includes(paramName)) {
+          errorParams.push(paramName);
+        }
+      }
+      if (currentMax < paramConfig.configurable.min || currentMax > paramConfig.configurable.max) {
+        hasErrors = true;
+        if (!errorParams.includes(paramName)) {
+          errorParams.push(paramName);
+        }
+      }
+    });
+
+    if (hasErrors) {
+      alert(`❌ Invalid values for: ${errorParams.join(", ")}\n\nRules:\n- Min < Max\n- Values must be within configurable range\n\nResetting to defaults...`);
+      // Reset error parameters to defaults
+      for (const paramName of errorParams) {
+        const paramConfig = config.parameters[paramName];
+        const minInput = document.querySelector(`[data-param="${paramName}"][data-bound="min"]`);
+        const maxInput = document.querySelector(`[data-param="${paramName}"][data-bound="max"]`);
+        minInput.value = paramConfig.optimal.min;
+        maxInput.value = paramConfig.optimal.max;
+      }
+      return;
+    }
 
     // Update config with new values from inputs
     inputs.forEach(input => {

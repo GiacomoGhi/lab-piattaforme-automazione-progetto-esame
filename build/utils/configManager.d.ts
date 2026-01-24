@@ -1,6 +1,10 @@
 export interface ParameterRange {
     unit: string;
     description: string;
+    configurable: {
+        min: number;
+        max: number;
+    };
     optimal: {
         min: number;
         max: number;
