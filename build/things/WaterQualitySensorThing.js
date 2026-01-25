@@ -10,12 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaterQualitySensorThing = void 0;
-// Optimal ranges for aquarium
-const OPTIMAL_RANGES = {
-    pH: { min: 6.5, max: 7.5, warningMin: 6.0, warningMax: 8.0 },
-    temperature: { min: 24, max: 26, warningMin: 22, warningMax: 28 },
-    oxygenLevel: { min: 6, max: 8, warningMin: 5, warningMax: 10 },
-};
+const configManager_1 = require("../utils/configManager");
 /**
  * WaterQualitySensorThing - Monitors aquarium water quality.
  *
@@ -199,14 +194,31 @@ class WaterQualitySensorThing {
      * Get the status of a parameter based on its value
      */
     getParameterStatus(param, value) {
-        const range = OPTIMAL_RANGES[param];
-        if (value < range.warningMin || value > range.warningMax) {
-            return "alert";
+        try {
+            const config = (0, configManager_1.loadConfig)();
+            const paramConfig = config.parameters[param];
+            if (!paramConfig)
+                return "ok";
+            const optimal = paramConfig.optimal;
+            const range = optimal.max - optimal.min;
+            const margin = range * 0.15; // 15% beyond optimal range
+            const criticalMin = optimal.min - margin;
+            const criticalMax = optimal.max + margin;
+            // Alert (critical) if outside critical range (15% beyond optimal)
+            if (value < criticalMin || value > criticalMax) {
+                return "alert";
+            }
+            // Warning if outside optimal range but within critical
+            else if (value < optimal.min || value > optimal.max) {
+                return "warning";
+            }
+            // OK if within optimal range
+            return "ok";
         }
-        else if (value < range.min || value > range.max) {
-            return "warning";
+        catch (error) {
+            console.error(`Error getting parameter status for ${param}:`, error);
+            return "ok";
         }
-        return "ok";
     }
     /**
      * Get current parameter status for external use

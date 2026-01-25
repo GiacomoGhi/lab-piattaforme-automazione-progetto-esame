@@ -13,11 +13,9 @@ import { WaterThing } from "./things/WaterThing";
 // AQUARIUM MONITOR - ORCHESTRATOR
 // ====================================
 // Water Quality Sensor (HTTP) + Filter Pump (Modbus)
-// Logic:
-// - pH out of range (< 6.5 or > 7.5) → increase pump speed
-// - Temperature > 26°C → emit alert
-// - Low oxygen (< 6 mg/L) → increase pump speed
-// - Automatic daily cleaning cycle
+// Pump speed control:
+// - Warning (yellow): 15% pump speed - Modify: 0.4/sec per parameter
+// - Critical (red): 40% pump speed - Modify: 0.8/sec per parameter
 // ====================================
 
 interface OrchestratorState {
@@ -109,11 +107,132 @@ function startStaticFileServer(port: number = 3000): void {
   });
 }
 
+/**
+ * Start API server for configuration management
+ */
+function startAPIServer(port: number = 3001): void {
+  const { loadConfig } = require("./utils/configManager");
+  
+  const server = http.createServer((req, res) => {
+    // Enable CORS
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // GET /api/config - Return current configuration
+    if (req.method === "GET" && req.url === "/api/config") {
+      try {
+        const config = loadConfig();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(config, null, 2));
+      } catch (error: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+
+    // GET /api/mode - Return current mode
+    if (req.method === "GET" && req.url === "/api/mode") {
+      try {
+        const config = loadConfig();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ mode: config.mode }));
+      } catch (error: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+
+    // POST /api/mode - Change mode (demo/production)
+    if (req.method === "POST" && req.url === "/api/mode") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk.toString();
+      });
+      req.on("end", () => {
+        try {
+          const data = JSON.parse(body);
+          const newMode = data.mode;
+          
+          if (!newMode || (newMode !== "demo" && newMode !== "production")) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid mode. Must be 'demo' or 'production'" }));
+            return;
+          }
+
+          // Load config and update mode
+          const config = loadConfig();
+          config.mode = newMode;
+          
+          // Save updated config back to file
+          const configPath = path.join(__dirname, "../config.json");
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          
+          console.log(`🔄 Mode changed to: ${newMode}`);
+          
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ mode: newMode, message: `Mode changed to ${newMode}` }));
+        } catch (error: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
+      return;
+    }
+
+    // POST /api/config - Update configuration
+    if (req.method === "POST" && req.url === "/api/config") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk.toString();
+      });
+      req.on("end", () => {
+        try {
+          const newConfig = JSON.parse(body);
+          
+          // Save updated config to file
+          const configPath = path.join(__dirname, "../config.json");
+          fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
+          
+          console.log("📝 Configuration updated from API");
+          
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ message: "Configuration saved successfully", config: newConfig }));
+        } catch (error: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
+      return;
+    }
+
+    // Default 404
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not Found" }));
+  });
+
+  server.listen(port, () => {
+    console.log(`📡 API server listening on http://localhost:${port}`);
+    console.log(`   GET http://localhost:${port}/api/config\n`);
+  });
+}
+
 (async function main() {
   console.log("🐠 Starting Aquarium Monitor System...\n");
 
   // Start static file server (serves index.html, www/*, etc.)
   startStaticFileServer(3000);
+
+  // Start API server (provides /api/config endpoint)
+  startAPIServer(3001);
 
   // Create servient with HTTP server and Modbus client
   const servient = new Servient();
@@ -198,22 +317,18 @@ function startStaticFileServer(port: number = 3000): void {
     const speedValue = await currentSpeed.value();
     const speed = Number(speedValue);
 
-    // React based on parameter
-    if (alert.parameter === "pH" && alert.status === "alert") {
-      // pH critical - increase pump speed to improve water circulation
-      const newSpeed = Math.min(100, speed + 20);
-      console.log(`🔄 pH critical - increasing pump speed to ${newSpeed}%`);
-      await consumedPump.invokeAction("setPumpSpeed", newSpeed);
-    } else if (alert.parameter === "temperature" && alert.status === "alert") {
-      // Temperature > 26°C - emit alert
-      console.log(
-        "🌡️ TEMPERATURE ALERT: Water temperature is critical! Check cooling system."
-      );
-    } else if (alert.parameter === "oxygenLevel" && alert.status === "alert") {
-      // Oxygen low - increase pump speed for better aeration
-      const newSpeed = Math.min(100, speed + 25);
-      console.log(`💨 Oxygen low - increasing pump speed to ${newSpeed}%`);
-      await consumedPump.invokeAction("setPumpSpeed", newSpeed);
+    // Pump speed based on alert level:
+    // - warning (yellow): 15% pump speed
+    // - alert (red): 40% pump speed
+    
+    if (alert.status === "warning") {
+      // Warning level (yellow) - activate pump at 15%
+      console.log(`⚠️ WARNING (${alert.parameter}): Setting pump speed to 15%`);
+      await consumedPump.invokeAction("setPumpSpeed", 15);
+    } else if (alert.status === "alert") {
+      // Critical level (red) - activate pump at 40%
+      console.log(`🚨 CRITICAL (${alert.parameter}): Setting pump speed to 40%`);
+      await consumedPump.invokeAction("setPumpSpeed", 40);
     }
   });
 

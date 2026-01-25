@@ -156,9 +156,9 @@ class WaterThing {
             const direction = isIncreasing ? 1 : -1;
             // Apply 0.2 to all parameters
             const baseChange = 0.2 * direction;
-            // Apply 0.2 extra to accelerated parameter
+            // Apply 0.4 extra to accelerated parameter
             const acceleratedParam = parametersMap[this.degradationConfig.acceleratedParameterIndex];
-            const acceleratedChange = 0.2 * direction;
+            const acceleratedChange = 0.4 * direction;
             for (let i = 0; i < parametersMap.length; i++) {
                 const param = parametersMap[i];
                 const extraChange = i === this.degradationConfig.acceleratedParameterIndex ? acceleratedChange : 0;

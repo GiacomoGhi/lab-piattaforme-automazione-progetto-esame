@@ -196,7 +196,7 @@ export class FilterPumpThing {
 
       // Emit changes
       this.thing.emitPropertyChange("filterHealth");
-    }, 5000); // Check every 5 seconds
+    }, 1000); // Check every 1 second (accelerated for demo)
 
     // Simulate occasional status changes
     this.simulationInterval = setInterval(() => {

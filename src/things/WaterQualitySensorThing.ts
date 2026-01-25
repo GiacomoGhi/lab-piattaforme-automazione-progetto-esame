@@ -1,5 +1,6 @@
 import WoT from "wot-typescript-definitions";
 import { WaterParameters, WaterStateChangedEvent } from "../types/WaterTypes";
+import { loadConfig } from "../utils/configManager";
 
 interface ParameterAlert {
   parameter: string;
@@ -7,13 +8,6 @@ interface ParameterAlert {
   status: "ok" | "warning" | "alert";
   message: string;
 }
-
-// Optimal ranges for aquarium
-const OPTIMAL_RANGES = {
-  pH: { min: 6.5, max: 7.5, warningMin: 6.0, warningMax: 8.0 },
-  temperature: { min: 24, max: 26, warningMin: 22, warningMax: 28 },
-  oxygenLevel: { min: 6, max: 8, warningMin: 5, warningMax: 10 },
-};
 
 /**
  * WaterQualitySensorThing - Monitors aquarium water quality.
@@ -241,17 +235,35 @@ export class WaterQualitySensorThing {
    * Get the status of a parameter based on its value
    */
   private getParameterStatus(
-    param: keyof typeof OPTIMAL_RANGES,
+    param: string,
     value: number
   ): "ok" | "warning" | "alert" {
-    const range = OPTIMAL_RANGES[param];
+    try {
+      const config = loadConfig();
+      const paramConfig = config.parameters[param as keyof typeof config.parameters];
+      
+      if (!paramConfig) return "ok";
 
-    if (value < range.warningMin || value > range.warningMax) {
-      return "alert";
-    } else if (value < range.min || value > range.max) {
-      return "warning";
+      const optimal = paramConfig.optimal;
+      const range = optimal.max - optimal.min;
+      const margin = range * 0.15; // 15% beyond optimal range
+      const criticalMin = optimal.min - margin;
+      const criticalMax = optimal.max + margin;
+
+      // Alert (critical) if outside critical range (15% beyond optimal)
+      if (value < criticalMin || value > criticalMax) {
+        return "alert";
+      }
+      // Warning if outside optimal range but within critical
+      else if (value < optimal.min || value > optimal.max) {
+        return "warning";
+      }
+      // OK if within optimal range
+      return "ok";
+    } catch (error) {
+      console.error(`Error getting parameter status for ${param}:`, error);
+      return "ok";
     }
-    return "ok";
   }
 
   /**

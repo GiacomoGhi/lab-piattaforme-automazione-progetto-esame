@@ -2,10 +2,11 @@
 // Polls the Things via HTTP and updates the UI
 
 const BASE_URL = "http://localhost:8080";
+const CONFIG_API_URL = "http://localhost:3001";
 const POLL_INTERVAL = 2000; // ms
 
-// Optimal ranges for status calculation
-const OPTIMAL_RANGES = {
+// Configuration loaded from API
+let OPTIMAL_RANGES = {
   pH: { min: 6.5, max: 7.5, warningMin: 6.0, warningMax: 8.0 },
   temperature: { min: 24, max: 26, warningMin: 22, warningMax: 28 },
   oxygenLevel: { min: 6, max: 8, warningMin: 5, warningMax: 10 },
@@ -16,8 +17,11 @@ const alerts = [];
 const MAX_ALERTS = 10;
 
 // Initialize
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("🐠 Aquarium Monitor UI starting...");
+
+  // Load configuration from API
+  await loadConfiguration();
 
   // Set up event listeners
   setupEventListeners();
@@ -26,7 +30,116 @@ document.addEventListener("DOMContentLoaded", () => {
   startPolling();
 });
 
+/**
+ * Load configuration from API and update UI
+ */
+async function loadConfiguration() {
+  try {
+    const response = await fetch(`${CONFIG_API_URL}/api/config`);
+    if (!response.ok) throw new Error("Failed to load configuration");
+    
+    const config = await response.json();
+    console.log("✅ Configuration loaded:", config);
+
+    // Update OPTIMAL_RANGES from config
+    for (const [paramName, paramConfig] of Object.entries(config.parameters)) {
+      OPTIMAL_RANGES[paramName] = {
+        min: paramConfig.optimal.min,
+        max: paramConfig.optimal.max,
+      };
+    }
+
+    // Update mode selector
+    document.getElementById("mode-select").value = config.mode;
+
+    // Populate parameter configuration UI
+    populateParametersConfig(config.parameters);
+  } catch (error) {
+    console.error("❌ Error loading configuration:", error);
+    console.warn("⚠️ Using default configuration");
+  }
+}
+
+/**
+ * Populate the parameters configuration section
+ */
+function populateParametersConfig(parameters) {
+  const container = document.getElementById("parameters-config");
+  container.innerHTML = "";
+
+  for (const [paramName, paramConfig] of Object.entries(parameters)) {
+    const paramDiv = document.createElement("div");
+    paramDiv.className = "parameter-config";
+    const configMin = paramConfig.configurable.min;
+    const configMax = paramConfig.configurable.max;
+    paramDiv.innerHTML = `
+      <h4>${paramConfig.description} <span class="unit">(${paramConfig.unit})</span></h4>
+      <div class="config-limits" style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">
+        Configurable range: ${configMin} - ${configMax}
+      </div>
+      <div class="range-input">
+        <label>Min:</label>
+        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="min" value="${paramConfig.optimal.min}" min="${configMin}" max="${configMax}" title="Min must be less than Max (${configMin}-${configMax})">
+      </div>
+      <div class="range-input">
+        <label>Max:</label>
+        <input type="number" step="0.1" class="param-input" data-param="${paramName}" data-bound="max" value="${paramConfig.optimal.max}" min="${configMin}" max="${configMax}" title="Max must be greater than Min (${configMin}-${configMax})">
+      </div>
+    `;
+    container.appendChild(paramDiv);
+  }
+
+  // Add Save button at the end
+  const saveDiv = document.createElement("div");
+  saveDiv.style.gridColumn = "1 / -1";
+  saveDiv.style.marginTop = "20px";
+  saveDiv.innerHTML = `
+    <button id="save-config-btn" style="
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #00d9ff, #0066cc);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    ">💾 Save Configuration</button>
+  `;
+  container.appendChild(saveDiv);
+
+  // Add event listener to save button
+  document.getElementById("save-config-btn").addEventListener("click", saveConfiguration);
+}
+
 function setupEventListeners() {
+  // Mode selector
+  const modeSelect = document.getElementById("mode-select");
+  if (modeSelect) {
+    modeSelect.addEventListener("change", async (e) => {
+      const newMode = e.target.value;
+      console.log(`🔄 Changing mode to: ${newMode}`);
+      try {
+        const response = await fetch(`${CONFIG_API_URL}/api/mode`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: newMode }),
+        });
+        if (response.ok) {
+          console.log(`✅ Mode changed to: ${newMode}`);
+        } else {
+          console.error("Failed to change mode");
+          // Revert selector
+          await loadConfiguration();
+        }
+      } catch (error) {
+        console.error("Error changing mode:", error);
+        // Revert selector
+        await loadConfiguration();
+      }
+    });
+  }
+
   // Speed slider
   const speedSlider = document.getElementById("speed-slider");
   speedSlider.addEventListener("input", (e) => {
@@ -53,6 +166,169 @@ function setupEventListeners() {
   document.getElementById("stop-btn").addEventListener("click", async () => {
     await stopPump();
   });
+
+  // Reset configuration button
+  const resetBtn = document.getElementById("reset-config-btn");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetConfiguration);
+  }
+}
+
+/**
+ * Save configuration changes to the server
+ */
+async function saveConfiguration() {
+  try {
+    // Gather all input values
+    const inputs = document.querySelectorAll(".param-input");
+    const config = await fetch(`${CONFIG_API_URL}/api/config`).then(r => r.json());
+
+    // Validate all inputs before saving
+    let hasErrors = false;
+    const errorParams = [];
+
+    inputs.forEach(input => {
+      const paramName = input.dataset.param;
+      const bound = input.dataset.bound;
+      const value = parseFloat(input.value);
+      const paramConfig = config.parameters[paramName];
+
+      if (!paramConfig) return;
+
+      // Get current values
+      const currentMin = parseFloat(document.querySelector(`[data-param="${paramName}"][data-bound="min"]`).value);
+      const currentMax = parseFloat(document.querySelector(`[data-param="${paramName}"][data-bound="max"]`).value);
+
+      // Validate: min >= max or max <= min or min = max
+      if (currentMin >= currentMax) {
+        hasErrors = true;
+        if (!errorParams.includes(paramName)) {
+          errorParams.push(paramName);
+        }
+        return;
+      }
+
+      // Validate: values within configurable range
+      if (currentMin < paramConfig.configurable.min || currentMin > paramConfig.configurable.max) {
+        hasErrors = true;
+        if (!errorParams.includes(paramName)) {
+          errorParams.push(paramName);
+        }
+      }
+      if (currentMax < paramConfig.configurable.min || currentMax > paramConfig.configurable.max) {
+        hasErrors = true;
+        if (!errorParams.includes(paramName)) {
+          errorParams.push(paramName);
+        }
+      }
+    });
+
+    if (hasErrors) {
+      alert(`❌ Invalid values for: ${errorParams.join(", ")}\n\nRules:\n- Min < Max\n- Values must be within configurable range\n\nResetting to defaults...`);
+      // Reset error parameters to defaults
+      for (const paramName of errorParams) {
+        const paramConfig = config.parameters[paramName];
+        const minInput = document.querySelector(`[data-param="${paramName}"][data-bound="min"]`);
+        const maxInput = document.querySelector(`[data-param="${paramName}"][data-bound="max"]`);
+        minInput.value = paramConfig.optimal.min;
+        maxInput.value = paramConfig.optimal.max;
+      }
+      return;
+    }
+
+    // Update config with new values from inputs
+    inputs.forEach(input => {
+      const paramName = input.dataset.param;
+      const bound = input.dataset.bound;
+      const value = parseFloat(input.value);
+
+      if (config.parameters[paramName]) {
+        config.parameters[paramName].optimal[bound] = value;
+      }
+    });
+
+    // Send updated config to server
+    const response = await fetch(`${CONFIG_API_URL}/api/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+
+    if (response.ok) {
+      console.log("✅ Configuration saved successfully");
+      alert("✅ Configuration saved! Changes will apply to new measurements.");
+      // Reload to ensure UI reflects saved values
+      await loadConfiguration();
+    } else {
+      console.error("Failed to save configuration");
+      alert("❌ Failed to save configuration");
+    }
+  } catch (error) {
+    console.error("Error saving configuration:", error);
+    alert("❌ Error saving configuration: " + error.message);
+  }
+}
+
+/**
+ * Reset configuration to defaults
+ */
+async function resetConfiguration() {
+  if (!confirm("⚠️ Are you sure you want to reset all parameters to defaults?")) {
+    return;
+  }
+
+  try {
+    // Fetch default config from server (fresh from file)
+    const response = await fetch(`${CONFIG_API_URL}/api/config`);
+    if (!response.ok) throw new Error("Failed to fetch configuration");
+    
+    const config = await response.json();
+    
+    // Create default values based on original config structure
+    const defaultConfig = {
+      mode: "demo",
+      description: config.description,
+      parameters: {},
+      modes: config.modes
+    };
+
+    // Reset all parameters to their hardcoded defaults
+    defaultConfig.parameters.pH = {
+      unit: "pH",
+      description: "Water pH Level",
+      optimal: { min: 6.5, max: 7.5 }
+    };
+    defaultConfig.parameters.temperature = {
+      unit: "°C",
+      description: "Water Temperature",
+      optimal: { min: 24, max: 26 }
+    };
+    defaultConfig.parameters.oxygenLevel = {
+      unit: "mg/L",
+      description: "Dissolved Oxygen Level",
+      optimal: { min: 6, max: 8 }
+    };
+
+    // Save reset config to server
+    const saveResponse = await fetch(`${CONFIG_API_URL}/api/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(defaultConfig),
+    });
+
+    if (saveResponse.ok) {
+      console.log("✅ Configuration reset to defaults");
+      alert("✅ Configuration reset to defaults!");
+      // Reload to ensure UI reflects default values
+      await loadConfiguration();
+    } else {
+      console.error("Failed to reset configuration");
+      alert("❌ Failed to reset configuration");
+    }
+  } catch (error) {
+    console.error("Error resetting configuration:", error);
+    alert("❌ Error resetting configuration: " + error.message);
+  }
 }
 
 function startPolling() {
@@ -209,9 +485,16 @@ function getParameterStatus(param, value) {
   const range = OPTIMAL_RANGES[param];
   if (!range) return "ok";
 
-  if (value < range.warningMin || value > range.warningMax) {
+  const optimal = range;
+  const rangeSize = optimal.max - optimal.min;
+  const margin = rangeSize * 0.15; // 15% beyond optimal range
+  
+  const criticalMin = optimal.min - margin;
+  const criticalMax = optimal.max + margin;
+
+  if (value < criticalMin || value > criticalMax) {
     return "alert";
-  } else if (value < range.min || value > range.max) {
+  } else if (value < optimal.min || value > optimal.max) {
     return "warning";
   }
   return "ok";
@@ -282,14 +565,23 @@ function renderAlerts() {
 
   container.innerHTML = alerts
     .map(
-      (alert) => `
+      (alert) => {
+        const date = new Date(alert.time);
+        const dd = String(date.getDate()).padStart(2, '0');
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const yyyy = date.getFullYear();
+        const hh = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        const ss = String(date.getSeconds()).padStart(2, '0');
+        const formattedTime = `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+        
+        return `
       <div class="alert-item ${alert.status}">
-        <span class="alert-time">${new Date(
-          alert.time,
-        ).toLocaleTimeString()}</span>
+        <span class="alert-time">${formattedTime}</span>
         <span class="alert-message">${alert.message}</span>
       </div>
-    `,
+    `;
+      }
     )
     .join("");
 }
