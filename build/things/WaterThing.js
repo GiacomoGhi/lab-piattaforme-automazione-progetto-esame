@@ -10,18 +10,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaterThing = void 0;
-/**
- * WaterThing - Digital Twin representing the aquarium water state.
- *
- * This Thing acts as the source of truth for water parameters.
- * It exposes pH, temperature, and oxygenLevel as read/write properties.
- * Other Things (like WaterQualitySensor) subscribe to this Thing's events.
- *
- * Architecture:
- * - WaterThing (Digital Twin) ← publishes state changes
- * - WaterQualitySensor ← subscribes and reads from WaterThing
- * - FilterPump ← can affect water state (future: via ModbusMockServer)
- */
+const OPTIMAL_VALUES = {
+    pH: 7.0,
+    temperature: 25.0,
+    oxygenLevel: 7.0,
+};
 class WaterThing {
     constructor(runtime, td) {
         // Internal water state (source of truth)
@@ -30,6 +23,13 @@ class WaterThing {
             temperature: 25.0,
             oxygenLevel: 7.0,
         };
+        // Simulation state
+        this.degradationConfig = {
+            currentTestCycle: 0, // 0 = increase, 1 = decrease
+            acceleratedParameterIndex: 0, // 0=pH, 1=temperature, 2=oxygenLevel
+        };
+        this.degradationInterval = null;
+        this.simulationActive = false;
         this.runtime = runtime;
         this.td = td;
     }
@@ -136,6 +136,91 @@ class WaterThing {
                 }
             }
         });
+    }
+    /**
+     * Start degradation simulation (called when pump turns off)
+     */
+    startDegradationSimulation() {
+        if (this.simulationActive) {
+            console.log("[Water DT] 🔄 Degradation simulation already running");
+            return;
+        }
+        this.simulationActive = true;
+        console.log(`[Water DT] 🌊 Starting degradation simulation (Cycle ${this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"})`);
+        if (this.degradationInterval) {
+            clearInterval(this.degradationInterval);
+        }
+        const parametersMap = ["pH", "temperature", "oxygenLevel"];
+        this.degradationInterval = setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            const isIncreasing = this.degradationConfig.currentTestCycle === 0;
+            const direction = isIncreasing ? 1 : -1;
+            // Apply 0.2 to all parameters
+            const baseChange = 0.2 * direction;
+            // Apply 0.2 extra to accelerated parameter
+            const acceleratedParam = parametersMap[this.degradationConfig.acceleratedParameterIndex];
+            const acceleratedChange = 0.2 * direction;
+            for (let i = 0; i < parametersMap.length; i++) {
+                const param = parametersMap[i];
+                const extraChange = i === this.degradationConfig.acceleratedParameterIndex ? acceleratedChange : 0;
+                const totalChange = baseChange + extraChange;
+                let newValue = this.state[param] + totalChange;
+                // Clamp values
+                switch (param) {
+                    case "pH":
+                        newValue = Math.max(0, Math.min(14, newValue));
+                        break;
+                    case "temperature":
+                        newValue = Math.max(0, Math.min(40, newValue));
+                        break;
+                    case "oxygenLevel":
+                        newValue = Math.max(0, Math.min(20, newValue));
+                        break;
+                }
+                this.state[param] = newValue;
+            }
+            // Emit changes
+            yield this.thing.emitPropertyChange("pH");
+            yield this.thing.emitPropertyChange("temperature");
+            yield this.thing.emitPropertyChange("oxygenLevel");
+        }), 1000); // Every second
+    }
+    /**
+     * Stop degradation simulation and prepare for next cycle
+     */
+    stopDegradationSimulation() {
+        if (!this.simulationActive)
+            return;
+        this.simulationActive = false;
+        if (this.degradationInterval) {
+            clearInterval(this.degradationInterval);
+            this.degradationInterval = null;
+        }
+        // Rotate to next cycle
+        this.degradationConfig.currentTestCycle = this.degradationConfig.currentTestCycle === 0 ? 1 : 0;
+        this.degradationConfig.acceleratedParameterIndex = (this.degradationConfig.acceleratedParameterIndex + 1) % 3;
+        console.log(`[Water DT] ⏹️ Degradation simulation stopped. Next: Cycle ${this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"}, Accelerated param: ${["pH", "temperature", "oxygenLevel"][this.degradationConfig.acceleratedParameterIndex]}`);
+    }
+    /**
+     * Check if all parameters are within optimal range
+     */
+    allParametersOptimal() {
+        const OPTIMAL_RANGES = {
+            pH: { min: 6.5, max: 7.5 },
+            temperature: { min: 24, max: 26 },
+            oxygenLevel: { min: 6, max: 8 },
+        };
+        return (this.state.pH >= OPTIMAL_RANGES.pH.min &&
+            this.state.pH <= OPTIMAL_RANGES.pH.max &&
+            this.state.temperature >= OPTIMAL_RANGES.temperature.min &&
+            this.state.temperature <= OPTIMAL_RANGES.temperature.max &&
+            this.state.oxygenLevel >= OPTIMAL_RANGES.oxygenLevel.min &&
+            this.state.oxygenLevel <= OPTIMAL_RANGES.oxygenLevel.max);
+    }
+    /**
+     * Stop everything on shutdown
+     */
+    stop() {
+        this.stopDegradationSimulation();
     }
 }
 exports.WaterThing = WaterThing;

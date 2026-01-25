@@ -16,7 +16,9 @@ export declare class WaterQualitySensorThing {
     private pH;
     private temperature;
     private oxygenLevel;
-    constructor(runtime: typeof WoT, td: WoT.ThingDescription);
+    private samplingInterval;
+    private samplingTimer;
+    constructor(runtime: typeof WoT, td: WoT.ThingDescription, samplingIntervalMs?: number);
     /**
      * Start the thing and subscribe to Water Digital Twin
      */
@@ -54,4 +56,21 @@ export declare class WaterQualitySensorThing {
         temperature: number;
         oxygenLevel: number;
     };
+    /**
+     * Set sampling interval (in milliseconds)
+     * Valid range: 3000 (3 sec) to 1800000 (30 min)
+     */
+    setSamplingInterval(intervalMs: number): void;
+    /**
+     * Start periodic sampling of water parameters
+     */
+    private startSampling;
+    /**
+     * Stop periodic sampling
+     */
+    private stopSampling;
+    /**
+     * Stop the sensor
+     */
+    stop(): void;
 }
