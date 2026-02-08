@@ -10,8 +10,8 @@
         "max": 14
       },
       "optimal": {
-        "min": 5,
-        "max": 8
+        "min": 6.5,
+        "max": 7.5
       }
     },
     "temperature": {
@@ -22,8 +22,8 @@
         "max": 40
       },
       "optimal": {
-        "min": 20,
-        "max": 24
+        "min": 24,
+        "max": 26
       }
     },
     "oxygenLevel": {
@@ -34,8 +34,8 @@
         "max": 20
       },
       "optimal": {
-        "min": 7,
-        "max": 10
+        "min": 6,
+        "max": 8
       }
     }
   },
@@ -48,7 +48,7 @@
     },
     "production": {
       "description": "Production mode with real sensors",
-      "samplingIntervalMs": 300000,
+      "samplingIntervalMs": 1800000,
       "degradationIntervalMs": 60000,
       "filterDegradationIntervalMs": 5000
     }

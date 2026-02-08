@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -10,12 +43,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaterQualitySensorThing = void 0;
-const configManager_1 = require("../utils/configManager");
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 /**
  * WaterQualitySensorThing - Monitors aquarium water quality.
  *
  * Exposes pH, temperature, and oxygenLevel properties.
- * Emits parameterAlert events when values are out of range.
+ * Emits per-parameter status change events when status levels change.
  *
  * This sensor polls the Water Digital Twin at regular intervals (default: 3 seconds).
  * PUB/SUB pattern is disabled to avoid continuous notifications.
@@ -28,13 +62,18 @@ class WaterQualitySensorThing {
         this.pH = 7.0;
         this.temperature = 25.0;
         this.oxygenLevel = 7.0;
+        this.pHStatus = "ok";
+        this.temperatureStatus = "ok";
+        this.oxygenLevelStatus = "ok";
         // Sampling configuration (in milliseconds)
         this.samplingInterval = 3000; // Default 3 seconds for demo
         this.samplingTimer = null;
         this.runtime = runtime;
         this.td = td;
+        this.config = this.loadConfigFromFile();
+        this.applyMode(this.config.mode, false);
         if (samplingIntervalMs) {
-            this.samplingInterval = samplingIntervalMs;
+            this.setSamplingInterval(samplingIntervalMs);
         }
     }
     /**
@@ -57,6 +96,15 @@ class WaterQualitySensorThing {
                 console.log("> Read oxygenLevel:", this.oxygenLevel.toFixed(1));
                 return this.oxygenLevel;
             }));
+            this.thing.setPropertyReadHandler("pHStatus", () => __awaiter(this, void 0, void 0, function* () {
+                return this.pHStatus;
+            }));
+            this.thing.setPropertyReadHandler("temperatureStatus", () => __awaiter(this, void 0, void 0, function* () {
+                return this.temperatureStatus;
+            }));
+            this.thing.setPropertyReadHandler("oxygenLevelStatus", () => __awaiter(this, void 0, void 0, function* () {
+                return this.oxygenLevelStatus;
+            }));
             this.thing.setPropertyReadHandler("allParameters", () => __awaiter(this, void 0, void 0, function* () {
                 const params = {
                     pH: this.pH,
@@ -66,6 +114,49 @@ class WaterQualitySensorThing {
                 };
                 console.log("> Read allParameters:", JSON.stringify(params));
                 return params;
+            }));
+            this.thing.setPropertyReadHandler("mode", () => __awaiter(this, void 0, void 0, function* () {
+                return this.config.mode;
+            }));
+            this.thing.setPropertyReadHandler("config", () => __awaiter(this, void 0, void 0, function* () {
+                return this.config;
+            }));
+            this.thing.setPropertyReadHandler("samplingIntervalMs", () => __awaiter(this, void 0, void 0, function* () {
+                return this.samplingInterval;
+            }));
+            this.thing.setPropertyWriteHandler("mode", (value) => __awaiter(this, void 0, void 0, function* () {
+                const nextMode = yield this.extractString(value);
+                if (nextMode !== "demo" && nextMode !== "production") {
+                    console.warn(`[Sensor] ⚠️ Invalid mode: ${nextMode}`);
+                    return;
+                }
+                this.config.mode = nextMode;
+                this.applyMode(nextMode, true);
+                this.saveConfigToFile(this.config);
+                this.thing.emitPropertyChange("mode");
+                this.thing.emitPropertyChange("config");
+                this.thing.emitPropertyChange("samplingIntervalMs");
+                this.thing.emitEvent("configChanged", {
+                    mode: this.config.mode,
+                    parameters: this.config.parameters,
+                });
+            }));
+            this.thing.setPropertyWriteHandler("config", (value) => __awaiter(this, void 0, void 0, function* () {
+                const nextConfig = yield this.extractObject(value);
+                if (!(nextConfig === null || nextConfig === void 0 ? void 0 : nextConfig.parameters) || !nextConfig.mode) {
+                    console.warn("[Sensor] ⚠️ Invalid config payload, ignoring.");
+                    return;
+                }
+                this.config = nextConfig;
+                this.applyMode(this.config.mode, true);
+                this.saveConfigToFile(this.config);
+                this.thing.emitPropertyChange("config");
+                this.thing.emitPropertyChange("mode");
+                this.thing.emitPropertyChange("samplingIntervalMs");
+                this.thing.emitEvent("configChanged", {
+                    mode: this.config.mode,
+                    parameters: this.config.parameters,
+                });
             }));
             yield this.thing.expose();
             console.log(`${this.td.title} thing started! Go to: http://localhost:8080/${(_a = this.td.title) === null || _a === void 0 ? void 0 : _a.toLowerCase()}`);
@@ -110,8 +201,8 @@ class WaterQualitySensorThing {
                         break;
                     }
           
-                    // Check for alerts and emit events
-                    this.checkAndEmitAlerts();
+                    // Check statuses and emit events
+                    this.updateStatusesAndEmitEvents();
           
                     // Emit property changes to notify our subscribers
                     this.thing.emitPropertyChange(event.parameter);
@@ -149,6 +240,7 @@ class WaterQualitySensorThing {
                 const o2Prop = yield this.consumedWater.readProperty("oxygenLevel");
                 this.oxygenLevel = Number(yield o2Prop.value());
                 console.log(`[Sensor] 📖 Initial water state: pH=${this.pH.toFixed(2)}, temp=${this.temperature.toFixed(1)}°C, O₂=${this.oxygenLevel.toFixed(1)} mg/L`);
+                this.updateStatusesAndEmitEvents();
             }
             catch (error) {
                 console.error("[Sensor] Failed to read initial water state:", error);
@@ -159,51 +251,49 @@ class WaterQualitySensorThing {
      * Check parameter values and emit alerts if necessary
      * Only emits the most critical alert to avoid concatenation issues
      */
-    checkAndEmitAlerts() {
-        let mostCriticalAlert = null;
-        // Check pH
-        const pHStatus = this.getParameterStatus("pH", this.pH);
-        if (pHStatus !== "ok") {
-            const alert = {
-                parameter: "pH",
-                value: this.pH,
-                status: pHStatus,
-                message: `pH level is ${pHStatus === "alert" ? "critical" : "not optimal"}: ${this.pH.toFixed(2)}`,
-            };
-            if (!mostCriticalAlert || pHStatus === "alert") {
-                mostCriticalAlert = alert;
-            }
+    updateStatusesAndEmitEvents() {
+        this.updateParameterStatus("pH", this.pH);
+        this.updateParameterStatus("temperature", this.temperature);
+        this.updateParameterStatus("oxygenLevel", this.oxygenLevel);
+    }
+    updateParameterStatus(parameter, value) {
+        const nextStatus = this.getParameterStatus(parameter, value);
+        let previousStatus = "ok";
+        switch (parameter) {
+            case "pH":
+                previousStatus = this.pHStatus;
+                this.pHStatus = nextStatus;
+                break;
+            case "temperature":
+                previousStatus = this.temperatureStatus;
+                this.temperatureStatus = nextStatus;
+                break;
+            case "oxygenLevel":
+                previousStatus = this.oxygenLevelStatus;
+                this.oxygenLevelStatus = nextStatus;
+                break;
         }
-        // Check temperature
-        const tempStatus = this.getParameterStatus("temperature", this.temperature);
-        if (tempStatus !== "ok") {
-            const alert = {
-                parameter: "temperature",
-                value: this.temperature,
-                status: tempStatus,
-                message: `Temperature is ${tempStatus === "alert" ? "critical" : "not optimal"}: ${this.temperature.toFixed(1)}°C`,
+        if (nextStatus !== previousStatus) {
+            const message = `${parameter} status changed to ${nextStatus}: ${value.toFixed(2)}`;
+            console.log(`[Sensor] ⚠️ ${message}`);
+            const statusEvent = {
+                parameter,
+                status: nextStatus,
+                value,
+                timestamp: new Date().toISOString(),
             };
-            if (!mostCriticalAlert || tempStatus === "alert") {
-                mostCriticalAlert = alert;
-            }
-        }
-        // Check oxygen
-        const o2Status = this.getParameterStatus("oxygenLevel", this.oxygenLevel);
-        if (o2Status !== "ok") {
-            const alert = {
-                parameter: "oxygenLevel",
-                value: this.oxygenLevel,
-                status: o2Status,
-                message: `Oxygen level is ${o2Status === "alert" ? "critical" : "not optimal"}: ${this.oxygenLevel.toFixed(1)} mg/L`,
-            };
-            if (!mostCriticalAlert || o2Status === "alert") {
-                mostCriticalAlert = alert;
-            }
-        }
-        // Emit only the most critical alert
-        if (mostCriticalAlert) {
-            console.log(`⚠️ ALERT: ${mostCriticalAlert.message}`);
-            this.thing.emitEvent("parameterAlert", mostCriticalAlert);
+            const eventName = parameter === "pH"
+                ? "pHStatusChanged"
+                : parameter === "temperature"
+                    ? "temperatureStatusChanged"
+                    : "oxygenLevelStatusChanged";
+            this.thing.emitEvent(eventName, statusEvent);
+            const statusProperty = parameter === "pH"
+                ? "pHStatus"
+                : parameter === "temperature"
+                    ? "temperatureStatus"
+                    : "oxygenLevelStatus";
+            this.thing.emitPropertyChange(statusProperty);
         }
     }
     /**
@@ -211,9 +301,8 @@ class WaterQualitySensorThing {
      */
     getParameterStatus(param, value) {
         try {
-            const config = (0, configManager_1.loadConfig)();
-            const paramConfig = config.parameters[param];
-            if (!paramConfig)
+            const paramConfig = this.config.parameters[param];
+            if (!(paramConfig === null || paramConfig === void 0 ? void 0 : paramConfig.optimal))
                 return "ok";
             const optimal = paramConfig.optimal;
             const range = optimal.max - optimal.min;
@@ -241,9 +330,9 @@ class WaterQualitySensorThing {
      */
     getStatus() {
         return {
-            pH: this.getParameterStatus("pH", this.pH),
-            temperature: this.getParameterStatus("temperature", this.temperature),
-            oxygenLevel: this.getParameterStatus("oxygenLevel", this.oxygenLevel),
+            pH: this.pHStatus,
+            temperature: this.temperatureStatus,
+            oxygenLevel: this.oxygenLevelStatus,
         };
     }
     /**
@@ -301,13 +390,83 @@ class WaterQualitySensorThing {
                 this.thing.emitPropertyChange("temperature");
                 this.thing.emitPropertyChange("oxygenLevel");
                 this.thing.emitPropertyChange("allParameters");
-                // Check and emit alerts
-                this.checkAndEmitAlerts();
+                // Check and emit status changes
+                this.updateStatusesAndEmitEvents();
             }
             catch (error) {
                 console.error("[Sensor] ❌ Error during sampling:", error);
             }
         }), this.samplingInterval);
+    }
+    applyMode(mode, logChange) {
+        const demoInterval = 3000;
+        const productionInterval = 1800000;
+        const nextInterval = mode === "demo" ? demoInterval : productionInterval;
+        if (logChange) {
+            console.log(`[Sensor] 🎛️ Mode set to ${mode} (sampling ${nextInterval}ms)`);
+        }
+        this.setSamplingInterval(nextInterval);
+    }
+    loadConfigFromFile() {
+        try {
+            const configPath = path.join(process.cwd(), "config.json");
+            const configContent = fs.readFileSync(configPath, "utf-8");
+            return JSON.parse(configContent);
+        }
+        catch (error) {
+            console.warn("[Sensor] ⚠️ Failed to load config.json, using defaults.");
+            return {
+                mode: "demo",
+                description: "Fallback configuration",
+                parameters: {
+                    pH: {
+                        unit: "pH",
+                        description: "Water pH Level",
+                        optimal: { min: 6.5, max: 7.5 },
+                    },
+                    temperature: {
+                        unit: "°C",
+                        description: "Water Temperature",
+                        optimal: { min: 24, max: 26 },
+                    },
+                    oxygenLevel: {
+                        unit: "mg/L",
+                        description: "Dissolved Oxygen Level",
+                        optimal: { min: 6, max: 8 },
+                    },
+                },
+                modes: {
+                    demo: { samplingIntervalMs: 3000 },
+                    production: { samplingIntervalMs: 1800000 },
+                },
+            };
+        }
+    }
+    saveConfigToFile(config) {
+        try {
+            const configPath = path.join(process.cwd(), "config.json");
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+            console.log("[Sensor] 📝 Configuration saved");
+        }
+        catch (error) {
+            console.error("[Sensor] ❌ Failed to save config.json:", error);
+        }
+    }
+    extractString(input) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (input && typeof input.value === "function") {
+                return String(yield input.value());
+            }
+            return String(input);
+        });
+    }
+    extractObject(input) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (input && typeof input.value === "function") {
+                return (yield input.value());
+            }
+            return input;
+        });
     }
     /**
      * Stop periodic sampling

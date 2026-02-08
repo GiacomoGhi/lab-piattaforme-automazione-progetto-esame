@@ -1,6 +1,9 @@
+import * as fs from "fs";
+import * as path from "path";
 import WoT from "wot-typescript-definitions";
 import { ModbusClient } from "@node-wot/binding-modbus";
 import type { WaterThing } from "./WaterThing";
+import type { WaterState } from "../types/WaterTypes";
 
 /**
  * FilterPumpThing - Modbus Proxy for aquarium filter pump.
@@ -23,7 +26,7 @@ interface PumpState {
   lastCleaningTime: string;
 }
 
-const OPTIMAL_VALUES = {
+const DEFAULT_OPTIMAL_TARGETS: WaterState = {
   pH: 7.0,
   temperature: 25.0,
   oxygenLevel: 7.0,
@@ -47,6 +50,7 @@ export class FilterPumpThing {
   private simulationInterval: NodeJS.Timeout | null = null;
   private healthDegradationInterval: NodeJS.Timeout | null = null;
   private waterCorrectionInterval: NodeJS.Timeout | null = null;
+  private optimalTargets: WaterState = { ...DEFAULT_OPTIMAL_TARGETS };
 
   constructor(
     runtime: typeof WoT,
@@ -244,27 +248,27 @@ export class FilterPumpThing {
       }
 
       const currentState = this.waterThing.getState();
+      const optimalTargets = this.loadOptimalTargetsFromConfig();
+
+      const speedFactor = Math.max(0, Math.min(1, this.state.pumpSpeed / 100));
+      const maxStep = 0.8 * speedFactor;
 
       // Calculate correction for each parameter
-      const corrections: any = {};
+      const corrections: Partial<WaterState> = {};
 
-      for (const [param, optimalValue] of Object.entries(OPTIMAL_VALUES)) {
-        const currentValue = currentState[param as keyof typeof currentState];
-        const delta = currentValue - optimalValue;
+      for (const [param, targetValue] of Object.entries(optimalTargets)) {
+        const currentValue = currentState[param as keyof WaterState];
+        const delta = targetValue - currentValue;
         let correction = 0;
 
-        if (Math.abs(delta) < 0.01) {
-          correction = 0; // Already optimal
-        } else if (delta > 0) {
-          // Above optimal - subtract (max -0.8)
-          correction = -Math.min(0.8, delta);
+        if (Math.abs(delta) < 0.01 || maxStep === 0) {
+          correction = 0;
         } else {
-          // Below optimal - add (max +0.8)
-          correction = Math.min(0.8, Math.abs(delta));
+          correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
         }
 
         if (Math.abs(correction) > 0.01) {
-          corrections[param] = currentValue + correction;
+          corrections[param as keyof WaterState] = currentValue + correction;
         }
       }
 
@@ -273,11 +277,6 @@ export class FilterPumpThing {
         await this.waterThing.setState(corrections);
       }
 
-      // Check if all parameters are optimal
-      if (this.waterThing.allParametersOptimal()) {
-        console.log("[Pump] ✨ All water parameters are optimal! Turning off pump...");
-        await this.setPumpSpeed(0);
-      }
     }, 1000); // Every second
   }
 
@@ -292,26 +291,37 @@ export class FilterPumpThing {
   }
 
   /**
-   * Set pump speed programmatically
+   * Load optimal targets from config.json (midpoint of optimal ranges)
    */
-  private async setPumpSpeed(speed: number): Promise<void> {
-    this.state.pumpSpeed = Math.max(0, Math.min(100, speed));
+  private loadOptimalTargetsFromConfig(): WaterState {
+    try {
+      const configPath = path.join(process.cwd(), "config.json");
+      const configContent = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(configContent) as any;
 
-    const wasRunning = speed > 0;
-    const nowRunning = this.state.pumpSpeed > 0;
-
-    if (this.state.pumpSpeed === 0) {
-      this.state.filterStatus = "idle";
-      this.stopWaterCorrection();
-      if (this.waterThing) {
-        this.waterThing.startDegradationSimulation();
+      if (!config?.parameters) {
+        return this.optimalTargets;
       }
-    } else {
-      this.state.filterStatus = "running";
-    }
 
-    this.thing.emitPropertyChange("pumpSpeed");
-    this.thing.emitPropertyChange("filterStatus");
+      const nextTargets: WaterState = { ...DEFAULT_OPTIMAL_TARGETS };
+
+      for (const key of ["pH", "temperature", "oxygenLevel"]) {
+        const paramConfig = config.parameters[key];
+        if (paramConfig?.optimal) {
+          const min = Number(paramConfig.optimal.min);
+          const max = Number(paramConfig.optimal.max);
+          if (!Number.isNaN(min) && !Number.isNaN(max)) {
+            nextTargets[key as keyof WaterState] = (min + max) / 2;
+          }
+        }
+      }
+
+      this.optimalTargets = nextTargets;
+      return nextTargets;
+    } catch (error) {
+      console.warn("[Pump] ⚠️ Failed to load optimal targets, using cached values.");
+      return this.optimalTargets;
+    }
   }
 
   /**

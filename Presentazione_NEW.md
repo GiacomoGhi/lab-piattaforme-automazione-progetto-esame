@@ -205,7 +205,7 @@ Questo assicura che il filtro sia sempre mantenuto in buone condizioni e permett
 │                          │                                    │
 │                   ┌──────┴──────┐                            │
 │                   │ Orchestrator│                            │
-│                   │ (main.ts)   │                            │
+│                   │ (app.ts)    │                            │
 │                   │             │                            │
 │                   │ - Alert Sub │                            │
 │                   │ - Pump Ctrl │                            │
@@ -399,7 +399,7 @@ correctionInterval = 1000; // 1 secondo (invece di secondi reali)
 
 Questo permette di osservare un intero ciclo completo (degradazione → alert → correzione) in circa **2-3 minuti**.
 
-**Dove**: `src/main.ts` linea di inizializzazione WaterQualitySensorThing
+**Dove**: `src/app.ts` linea di inizializzazione WaterQualitySensorThing
 
 ### **Aggiunta 4: Water Digital Twin - Cicli Accelerati**
 
@@ -494,7 +494,7 @@ T=30s   → Nuovo alert (Temp < 24°C o simile)
   - Spegne automaticamente quando tutti i parametri rientrano nei range ottimali
 
 ### 4. **Orchestrator** (Logica Centrale di Automazione)
-- Implementato in `src/main.ts`
+- Implementato in `src/app.ts`
 - Consuma tutti i Things via HTTP
 - Implementa la logica di automazione e reazione agli alert
 - Gestisce gli alert e le transizioni pompa ON/OFF
@@ -506,7 +506,7 @@ T=30s   → Nuovo alert (Temp < 24°C o simile)
 
 ### Punti di Estensione
 1. **Aggiungere nuovi Things**: Creare nuove classi in `src/things/` e TD in `models/`
-2. **Modificare logiche di orchestrazione**: Editare le funzioni di reazione in `src/main.ts`
+2. **Modificare logiche di orchestrazione**: Editare le funzioni di reazione in `src/app.ts`
 3. **Aggiungere nuovi sensori**: Estendere `OPTIMAL_RANGES` e logiche di alert
 4. **Integrare nuovi protocolli**: Aggiungere binding node-wot (Zigbee, CoAP, ecc.)
 
@@ -547,7 +547,7 @@ Per un ambiente di produzione:
 Architettura **proxy** a 3 livelli:
 
 ### 1 **Appl: Orchestrator**
-- **Componente**: `main.ts` (Orchestrator)
+- **Componente**: `app.ts` (Orchestrator)
 - **Protocollo**: HTTP REST
 - **Azione**: Consuma il FilterPumpThing come un Thing WoT qualsiasi
 - **Endpoint**: `http://localhost:8080/filterpump`
@@ -655,7 +655,7 @@ Durante l'esecuzione vedrai:
 ```
 lab-piattaforme-automazione-progetto-esame/
 ├── src/
-│   ├── main.ts                          # Entry point + Orchestrator
+│   ├── app.ts                           # Entry point + Orchestrator
 │   ├── things/
 │   │   ├── WaterThing.ts                # Digital Twin dell'acqua
 │   │   ├── WaterQualitySensorThing.ts   # Sensore qualità

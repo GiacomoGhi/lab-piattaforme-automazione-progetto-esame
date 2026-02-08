@@ -30,6 +30,7 @@ export declare class FilterPumpThing {
     private simulationInterval;
     private healthDegradationInterval;
     private waterCorrectionInterval;
+    private optimalTargets;
     constructor(runtime: typeof WoT, proxyTD: WoT.ThingDescription, modbusTD: WoT.ThingDescription, waterThing?: WaterThing);
     /**
      * Start the filter pump thing
@@ -53,9 +54,9 @@ export declare class FilterPumpThing {
      */
     private stopWaterCorrection;
     /**
-     * Set pump speed programmatically
+     * Load optimal targets from config.json (midpoint of optimal ranges)
      */
-    private setPumpSpeed;
+    private loadOptimalTargetsFromConfig;
     /**
      * Get current state for external use
      */

@@ -2,7 +2,6 @@
 // Polls the Things via HTTP and updates the UI
 
 const BASE_URL = "http://localhost:8080";
-const CONFIG_API_URL = "http://localhost:3001";
 const POLL_INTERVAL = 2000; // ms
 
 // Configuration loaded from API
@@ -35,7 +34,7 @@ document.addEventListener("DOMContentLoaded", async () => {
  */
 async function loadConfiguration() {
   try {
-    const response = await fetch(`${CONFIG_API_URL}/api/config`);
+    const response = await fetch(`${BASE_URL}/waterqualitysensor/properties/config`);
     if (!response.ok) throw new Error("Failed to load configuration");
     
     const config = await response.json();
@@ -120,10 +119,10 @@ function setupEventListeners() {
       const newMode = e.target.value;
       console.log(`🔄 Changing mode to: ${newMode}`);
       try {
-        const response = await fetch(`${CONFIG_API_URL}/api/mode`, {
-          method: "POST",
+        const response = await fetch(`${BASE_URL}/waterqualitysensor/properties/mode`, {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: newMode }),
+          body: JSON.stringify(newMode),
         });
         if (response.ok) {
           console.log(`✅ Mode changed to: ${newMode}`);
@@ -181,7 +180,7 @@ async function saveConfiguration() {
   try {
     // Gather all input values
     const inputs = document.querySelectorAll(".param-input");
-    const config = await fetch(`${CONFIG_API_URL}/api/config`).then(r => r.json());
+    const config = await fetch(`${BASE_URL}/waterqualitysensor/properties/config`).then(r => r.json());
 
     // Validate all inputs before saving
     let hasErrors = false;
@@ -248,8 +247,8 @@ async function saveConfiguration() {
     });
 
     // Send updated config to server
-    const response = await fetch(`${CONFIG_API_URL}/api/config`, {
-      method: "POST",
+    const response = await fetch(`${BASE_URL}/waterqualitysensor/properties/config`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
     });
@@ -279,7 +278,7 @@ async function resetConfiguration() {
 
   try {
     // Fetch default config from server (fresh from file)
-    const response = await fetch(`${CONFIG_API_URL}/api/config`);
+    const response = await fetch(`${BASE_URL}/waterqualitysensor/properties/config`);
     if (!response.ok) throw new Error("Failed to fetch configuration");
     
     const config = await response.json();
@@ -292,26 +291,29 @@ async function resetConfiguration() {
       modes: config.modes
     };
 
-    // Reset all parameters to their hardcoded defaults
+    // Reset all parameters to their hardcoded defaults (preserve configurable bounds)
     defaultConfig.parameters.pH = {
       unit: "pH",
       description: "Water pH Level",
+      configurable: config.parameters.pH?.configurable,
       optimal: { min: 6.5, max: 7.5 }
     };
     defaultConfig.parameters.temperature = {
       unit: "°C",
       description: "Water Temperature",
+      configurable: config.parameters.temperature?.configurable,
       optimal: { min: 24, max: 26 }
     };
     defaultConfig.parameters.oxygenLevel = {
       unit: "mg/L",
       description: "Dissolved Oxygen Level",
+      configurable: config.parameters.oxygenLevel?.configurable,
       optimal: { min: 6, max: 8 }
     };
 
     // Save reset config to server
-    const saveResponse = await fetch(`${CONFIG_API_URL}/api/config`, {
-      method: "POST",
+    const saveResponse = await fetch(`${BASE_URL}/waterqualitysensor/properties/config`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(defaultConfig),
     });
@@ -380,6 +382,9 @@ async function fetchSensorData() {
       pH: data.pH !== undefined ? data.pH : 7.0,
       temperature: data.temperature !== undefined ? data.temperature : 25.0,
       oxygenLevel: data.oxygenLevel !== undefined ? data.oxygenLevel : 7.0,
+      pHStatus: data.pHStatus,
+      temperatureStatus: data.temperatureStatus,
+      oxygenLevelStatus: data.oxygenLevelStatus,
     };
   } catch (error) {
     console.error("Error fetching sensor data:", error);
@@ -415,7 +420,7 @@ function updateSensorUI(data) {
   // Update pH
   const phValue = typeof data.pH === "number" ? data.pH : parseFloat(data.pH);
   document.getElementById("ph-value").textContent = phValue.toFixed(2);
-  const phStatus = getParameterStatus("pH", phValue);
+  const phStatus = data.pHStatus || getParameterStatus("pH", phValue);
   updateStatusIndicator("ph-status", phStatus);
   updateProgress("ph-progress", phValue, 0, 14);
   checkAndAddAlert("pH", phValue, phStatus);
@@ -427,7 +432,7 @@ function updateSensorUI(data) {
       : parseFloat(data.temperature);
   document.getElementById("temp-value").textContent =
     `${tempValue.toFixed(1)}°C`;
-  const tempStatus = getParameterStatus("temperature", tempValue);
+  const tempStatus = data.temperatureStatus || getParameterStatus("temperature", tempValue);
   updateStatusIndicator("temp-status", tempStatus);
   updateProgress("temp-progress", tempValue, 18, 32);
   checkAndAddAlert("Temperature", tempValue, tempStatus);
@@ -439,7 +444,7 @@ function updateSensorUI(data) {
       : parseFloat(data.oxygenLevel);
   document.getElementById("oxygen-value").textContent =
     `${oxygenValue.toFixed(1)} mg/L`;
-  const oxygenStatus = getParameterStatus("oxygenLevel", oxygenValue);
+  const oxygenStatus = data.oxygenLevelStatus || getParameterStatus("oxygenLevel", oxygenValue);
   updateStatusIndicator("oxygen-status", oxygenStatus);
   updateProgress("oxygen-progress", oxygenValue, 3, 12);
   checkAndAddAlert("Oxygen", oxygenValue, oxygenStatus);

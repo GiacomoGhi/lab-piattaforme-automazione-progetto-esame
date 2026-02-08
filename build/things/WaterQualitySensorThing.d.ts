@@ -1,9 +1,10 @@
 import WoT from "wot-typescript-definitions";
+import { ParameterStatus } from "../types/WaterTypes";
 /**
  * WaterQualitySensorThing - Monitors aquarium water quality.
  *
  * Exposes pH, temperature, and oxygenLevel properties.
- * Emits parameterAlert events when values are out of range.
+ * Emits per-parameter status change events when status levels change.
  *
  * This sensor polls the Water Digital Twin at regular intervals (default: 3 seconds).
  * PUB/SUB pattern is disabled to avoid continuous notifications.
@@ -17,8 +18,12 @@ export declare class WaterQualitySensorThing {
     private pH;
     private temperature;
     private oxygenLevel;
+    private pHStatus;
+    private temperatureStatus;
+    private oxygenLevelStatus;
     private samplingInterval;
     private samplingTimer;
+    private config;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription, samplingIntervalMs?: number);
     /**
      * Start the thing and subscribe to Water Digital Twin
@@ -36,7 +41,8 @@ export declare class WaterQualitySensorThing {
      * Check parameter values and emit alerts if necessary
      * Only emits the most critical alert to avoid concatenation issues
      */
-    private checkAndEmitAlerts;
+    private updateStatusesAndEmitEvents;
+    private updateParameterStatus;
     /**
      * Get the status of a parameter based on its value
      */
@@ -45,9 +51,9 @@ export declare class WaterQualitySensorThing {
      * Get current parameter status for external use
      */
     getStatus(): {
-        pH: "ok" | "warning" | "alert";
-        temperature: "ok" | "warning" | "alert";
-        oxygenLevel: "ok" | "warning" | "alert";
+        pH: ParameterStatus;
+        temperature: ParameterStatus;
+        oxygenLevel: ParameterStatus;
     };
     /**
      * Get current values for external use
@@ -66,6 +72,11 @@ export declare class WaterQualitySensorThing {
      * Start periodic sampling of water parameters
      */
     private startSampling;
+    private applyMode;
+    private loadConfigFromFile;
+    private saveConfigToFile;
+    private extractString;
+    private extractObject;
     /**
      * Stop periodic sampling
      */

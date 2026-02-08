@@ -20,11 +20,20 @@ Sensore che monitora i parametri dell'acqua.
 - `pH` - Livello pH (0-14)
 - `temperature` - Temperatura in °C
 - `oxygenLevel` - Ossigeno disciolto in mg/L
+- `pHStatus` - Stato pH (ok | warning | alert)
+- `temperatureStatus` - Stato temperatura (ok | warning | alert)
+- `oxygenLevelStatus` - Stato ossigeno (ok | warning | alert)
 - `allParameters` - Tutti i parametri con timestamp
+- `mode` - Modalita di campionamento (demo | production)
+- `samplingIntervalMs` - Intervallo di campionamento attivo
+- `config` - Configurazione completa (range e mode)
 
 **Events:**
 
-- `parameterAlert` - Emesso quando un parametro è fuori range
+- `pHStatusChanged` - Emesso quando cambia lo stato del pH
+- `temperatureStatusChanged` - Emesso quando cambia lo stato della temperatura
+- `oxygenLevelStatusChanged` - Emesso quando cambia lo stato dell'ossigeno
+- `configChanged` - Emesso quando cambia la configurazione
 
 ### 2. Filter Pump (Modbus → HTTP Proxy)
 
@@ -53,9 +62,9 @@ Pompa filtro con controllo velocità e ciclo di pulizia. Comunica via Modbus con
 
 L'orchestrator coordina i due Things con questa logica:
 
-1. **pH fuori range** (< 6.5 o > 7.5) → Aumenta velocità pompa del 20%
-2. **Temperatura > 26°C** → Emette alert
-3. **Ossigeno basso** (< 6 mg/L) → Aumenta velocità pompa del 25%
+1. **All OK** → Pompa OFF
+2. **Warning** → +15% per ogni parametro in warning
+3. **Alert** → +30% per ogni parametro in alert (cap 100%)
 4. **Auto cleaning cycle giornaliero** → Quando filter health < 50%
 
 ## Come Eseguire
@@ -192,6 +201,6 @@ Se gli alert non vengono generati:
 #    Temperature: 24-26°C (warning: 22-28°C)
 #    Oxygen: 6-8 mg/L (warning: 5-10 mg/L)
 
-# 3. Controlla il cooldown degli alert (10 secondi in main.ts)
+# 3. Verifica che il sensore emetta `parameterStatusChanged`
 ```
 

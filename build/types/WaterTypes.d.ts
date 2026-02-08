@@ -18,3 +18,10 @@ export interface WaterParameters {
     oxygenLevel: number;
     timestamp: string;
 }
+export type ParameterStatus = "ok" | "warning" | "alert";
+export interface ParameterStatusChangedEvent {
+    parameter: "pH" | "temperature" | "oxygenLevel";
+    status: ParameterStatus;
+    value: number;
+    timestamp: string;
+}

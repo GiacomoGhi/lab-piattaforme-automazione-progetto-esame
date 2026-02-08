@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -10,7 +43,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FilterPumpThing = void 0;
-const OPTIMAL_VALUES = {
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+const DEFAULT_OPTIMAL_TARGETS = {
     pH: 7.0,
     temperature: 25.0,
     oxygenLevel: 7.0,
@@ -27,6 +62,7 @@ class FilterPumpThing {
         this.simulationInterval = null;
         this.healthDegradationInterval = null;
         this.waterCorrectionInterval = null;
+        this.optimalTargets = Object.assign({}, DEFAULT_OPTIMAL_TARGETS);
         this.runtime = runtime;
         this.proxyTD = proxyTD;
         this.modbusTD = modbusTD;
@@ -183,22 +219,20 @@ class FilterPumpThing {
                 return;
             }
             const currentState = this.waterThing.getState();
+            const optimalTargets = this.loadOptimalTargetsFromConfig();
+            const speedFactor = Math.max(0, Math.min(1, this.state.pumpSpeed / 100));
+            const maxStep = 0.8 * speedFactor;
             // Calculate correction for each parameter
             const corrections = {};
-            for (const [param, optimalValue] of Object.entries(OPTIMAL_VALUES)) {
+            for (const [param, targetValue] of Object.entries(optimalTargets)) {
                 const currentValue = currentState[param];
-                const delta = currentValue - optimalValue;
+                const delta = targetValue - currentValue;
                 let correction = 0;
-                if (Math.abs(delta) < 0.01) {
-                    correction = 0; // Already optimal
-                }
-                else if (delta > 0) {
-                    // Above optimal - subtract (max -0.8)
-                    correction = -Math.min(0.8, delta);
+                if (Math.abs(delta) < 0.01 || maxStep === 0) {
+                    correction = 0;
                 }
                 else {
-                    // Below optimal - add (max +0.8)
-                    correction = Math.min(0.8, Math.abs(delta));
+                    correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
                 }
                 if (Math.abs(correction) > 0.01) {
                     corrections[param] = currentValue + correction;
@@ -207,11 +241,6 @@ class FilterPumpThing {
             // Apply corrections
             if (Object.keys(corrections).length > 0) {
                 yield this.waterThing.setState(corrections);
-            }
-            // Check if all parameters are optimal
-            if (this.waterThing.allParametersOptimal()) {
-                console.log("[Pump] ✨ All water parameters are optimal! Turning off pump...");
-                yield this.setPumpSpeed(0);
             }
         }), 1000); // Every second
     }
@@ -225,26 +254,34 @@ class FilterPumpThing {
         }
     }
     /**
-     * Set pump speed programmatically
+     * Load optimal targets from config.json (midpoint of optimal ranges)
      */
-    setPumpSpeed(speed) {
-        return __awaiter(this, void 0, void 0, function* () {
-            this.state.pumpSpeed = Math.max(0, Math.min(100, speed));
-            const wasRunning = speed > 0;
-            const nowRunning = this.state.pumpSpeed > 0;
-            if (this.state.pumpSpeed === 0) {
-                this.state.filterStatus = "idle";
-                this.stopWaterCorrection();
-                if (this.waterThing) {
-                    this.waterThing.startDegradationSimulation();
+    loadOptimalTargetsFromConfig() {
+        try {
+            const configPath = path.join(process.cwd(), "config.json");
+            const configContent = fs.readFileSync(configPath, "utf-8");
+            const config = JSON.parse(configContent);
+            if (!(config === null || config === void 0 ? void 0 : config.parameters)) {
+                return this.optimalTargets;
+            }
+            const nextTargets = Object.assign({}, DEFAULT_OPTIMAL_TARGETS);
+            for (const key of ["pH", "temperature", "oxygenLevel"]) {
+                const paramConfig = config.parameters[key];
+                if (paramConfig === null || paramConfig === void 0 ? void 0 : paramConfig.optimal) {
+                    const min = Number(paramConfig.optimal.min);
+                    const max = Number(paramConfig.optimal.max);
+                    if (!Number.isNaN(min) && !Number.isNaN(max)) {
+                        nextTargets[key] = (min + max) / 2;
+                    }
                 }
             }
-            else {
-                this.state.filterStatus = "running";
-            }
-            this.thing.emitPropertyChange("pumpSpeed");
-            this.thing.emitPropertyChange("filterStatus");
-        });
+            this.optimalTargets = nextTargets;
+            return nextTargets;
+        }
+        catch (error) {
+            console.warn("[Pump] ⚠️ Failed to load optimal targets, using cached values.");
+            return this.optimalTargets;
+        }
     }
     /**
      * Get current state for external use

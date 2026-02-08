@@ -104,14 +104,7 @@ class WaterThing {
             console.log(`[Water DT] ✏️ ${property} updated: ${oldValue.toFixed(2)} → ${newValue.toFixed(2)}`);
             // Emit property change (for subscribers using observeproperty)
             this.thing.emitPropertyChange(property);
-            // Emit waterStateChanged event (for subscribers using subscribeevent)
-            const event = {
-                parameter: property,
-                oldValue,
-                newValue,
-                timestamp: new Date().toISOString(),
-            };
-            this.thing.emitEvent("waterStateChanged", event);
+            // PUB/SUB disabled: WaterThing publishes only via properties in this demo.
             return {
                 success: true,
                 newValue,

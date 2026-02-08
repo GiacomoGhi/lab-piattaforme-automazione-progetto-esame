@@ -51,7 +51,7 @@ Monitorare continuamente i parametri chimici e fisici dell'acqua (pH, temperatur
   - Spegne automaticamente quando tutti i parametri rientrano nei range ottimali
 
 #### 4. **Orchestrator** (Logica Centrale di Automazione)
-- Implementato in `src/main.ts`
+- Implementato in `src/app.ts`
 - Consuma tutti i Things via HTTP
 - Implementa la logica di automazione e reazione agli alert
 - Gestisce gli alert e le transizioni pompa ON/OFF
@@ -233,7 +233,7 @@ samplingInterval = 300000; // 5 minuti (esempio)
 // Range valido: 3000 ms (3 sec) - 1800000 ms (30 min)
 ```
 
-Nel file `src/main.ts`, riga di inizializzazione:
+Nel file `src/app.ts`, riga di inizializzazione:
 ```typescript
 const waterSensor = new WaterQualitySensorThing(
   wotRuntime, 
@@ -468,7 +468,7 @@ La gestione della modalità demo/produzione verrà **semplificata e migliorata**
 
 ### Punti di Estensione
 1. **Aggiungere nuovi Things**: Creare nuove classi in `src/things/` e TD in `models/`
-2. **Modificare logiche di orchestrazione**: Editare le funzioni di reazione in `src/main.ts`
+2. **Modificare logiche di orchestrazione**: Editare le funzioni di reazione in `src/app.ts`
 3. **Aggiungere nuovi sensori**: Estendere `OPTIMAL_RANGES` e logiche di alert
 4. **Integrare nuovi protocolli**: Aggiungere binding node-wot (Zigbee, CoAP, ecc.)
 
@@ -509,7 +509,7 @@ Per un ambiente di produzione:
 Architettura **proxy** a 3 livelli:
 
 ### 1 **Appl: Orchestrator**
-- **Componente**: `main.ts` (Orchestrator)
+- **Componente**: `app.ts` (Orchestrator)
 - **Protocollo**: HTTP REST
 - **Azione**: Consuma il FilterPumpThing come un Thing WoT qualsiasi
 - **Endpoint**: `http://localhost:8080/filterpump`
@@ -617,7 +617,7 @@ Durante l'esecuzione vedrai:
 ```
 lab-piattaforme-automazione-progetto-esame/
 ├── src/
-│   ├── main.ts                          # Entry point + Orchestrator
+│   ├── app.ts                           # Entry point + Orchestrator
 │   ├── things/
 │   │   ├── WaterThing.ts                # Digital Twin dell'acqua
 │   │   ├── WaterQualitySensorThing.ts   # Sensore qualità
