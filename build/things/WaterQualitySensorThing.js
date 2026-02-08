@@ -17,8 +17,9 @@ const configManager_1 = require("../utils/configManager");
  * Exposes pH, temperature, and oxygenLevel properties.
  * Emits parameterAlert events when values are out of range.
  *
- * This sensor subscribes to the Water Digital Twin and reads its values.
- * Architecture: Water (Digital Twin) → publishes → WaterQualitySensor (subscribes)
+ * This sensor polls the Water Digital Twin at regular intervals (default: 3 seconds).
+ * PUB/SUB pattern is disabled to avoid continuous notifications.
+ * Architecture: WaterQualitySensor (polls) → Water Digital Twin (provides data)
  */
 class WaterQualitySensorThing {
     constructor(runtime, td, samplingIntervalMs) {
@@ -83,29 +84,44 @@ class WaterQualitySensorThing {
                 const waterTD = yield this.runtime.requestThingDescription("http://localhost:8080/water");
                 this.consumedWater = yield this.runtime.consume(waterTD);
                 console.log("[Sensor] ✅ Connected to Water Digital Twin");
+                // ===== PUB/SUB PATTERN DISABLED =====
+                // In questo scenario, il PUB/SUB è controproducente perché creerebbe continue segnalazioni
+                // ad ogni cambiamento dei parametri dell'acqua. Manteniamo solo il polling a intervalli.
+                /*
                 // Subscribe to the waterStateChanged event (pub/sub pattern)
-                yield this.consumedWater.subscribeEvent("waterStateChanged", (data) => __awaiter(this, void 0, void 0, function* () {
-                    const event = (yield data.value());
-                    console.log(`[Sensor] 📨 Received water state change: ${event.parameter} = ${event.newValue}`);
+                await this.consumedWater.subscribeEvent(
+                  "waterStateChanged",
+                  async (data) => {
+                    const event = (await data.value()) as WaterStateChangedEvent;
+                    console.log(
+                      `[Sensor] 📨 Received water state change: ${event.parameter} = ${event.newValue}`
+                    );
+          
                     // Update local cache
                     switch (event.parameter) {
-                        case "pH":
-                            this.pH = event.newValue;
-                            break;
-                        case "temperature":
-                            this.temperature = event.newValue;
-                            break;
-                        case "oxygenLevel":
-                            this.oxygenLevel = event.newValue;
-                            break;
+                      case "pH":
+                        this.pH = event.newValue;
+                        break;
+                      case "temperature":
+                        this.temperature = event.newValue;
+                        break;
+                      case "oxygenLevel":
+                        this.oxygenLevel = event.newValue;
+                        break;
                     }
+          
                     // Check for alerts and emit events
                     this.checkAndEmitAlerts();
+          
                     // Emit property changes to notify our subscribers
                     this.thing.emitPropertyChange(event.parameter);
                     this.thing.emitPropertyChange("allParameters");
-                }));
+                  }
+                );
+          
                 console.log("[Sensor] 📡 Subscribed to Water Digital Twin events");
+                */
+                console.log("[Sensor] 📡 PUB/SUB disabled - using polling mode only");
                 // Start periodic sampling
                 this.startSampling();
                 // Initial read of all water properties

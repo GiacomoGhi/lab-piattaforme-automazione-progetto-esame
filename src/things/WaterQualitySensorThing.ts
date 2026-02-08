@@ -15,8 +15,9 @@ interface ParameterAlert {
  * Exposes pH, temperature, and oxygenLevel properties.
  * Emits parameterAlert events when values are out of range.
  *
- * This sensor subscribes to the Water Digital Twin and reads its values.
- * Architecture: Water (Digital Twin) → publishes → WaterQualitySensor (subscribes)
+ * This sensor polls the Water Digital Twin at regular intervals (default: 3 seconds).
+ * PUB/SUB pattern is disabled to avoid continuous notifications.
+ * Architecture: WaterQualitySensor (polls) → Water Digital Twin (provides data)
  */
 export class WaterQualitySensorThing {
   private runtime: typeof WoT;
@@ -100,6 +101,10 @@ export class WaterQualitySensorThing {
 
       console.log("[Sensor] ✅ Connected to Water Digital Twin");
 
+      // ===== PUB/SUB PATTERN DISABLED =====
+      // In questo scenario, il PUB/SUB è controproducente perché creerebbe continue segnalazioni
+      // ad ogni cambiamento dei parametri dell'acqua. Manteniamo solo il polling a intervalli.
+      /*
       // Subscribe to the waterStateChanged event (pub/sub pattern)
       await this.consumedWater.subscribeEvent(
         "waterStateChanged",
@@ -132,6 +137,8 @@ export class WaterQualitySensorThing {
       );
 
       console.log("[Sensor] 📡 Subscribed to Water Digital Twin events");
+      */
+      console.log("[Sensor] 📡 PUB/SUB disabled - using polling mode only");
 
       // Start periodic sampling
       this.startSampling();

@@ -23,7 +23,7 @@
       },
       "optimal": {
         "min": 20,
-        "max": 30
+        "max": 24
       }
     },
     "oxygenLevel": {
@@ -34,8 +34,8 @@
         "max": 20
       },
       "optimal": {
-        "min": 4,
-        "max": 12
+        "min": 7,
+        "max": 10
       }
     }
   },
