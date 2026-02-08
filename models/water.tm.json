@@ -10,6 +10,12 @@
     ],
     "title": "Water",
     "description": "Digital Twin representing the aquarium water state. Acts as the source of truth for water parameters.",
+    "securityDefinitions": {
+        "nosec": {
+            "scheme": "nosec"
+        }
+    },
+    "security": "nosec",
     "properties": {
         "pH": {
             "type": "number",
@@ -37,32 +43,5 @@
             "readOnly": false
         }
     },
-    "actions": {},
-    "events": {
-        "waterStateChanged": {
-            "description": "Emitted when any water parameter changes",
-            "data": {
-                "type": "object",
-                "properties": {
-                    "parameter": {
-                        "type": "string",
-                        "enum": [
-                            "pH",
-                            "temperature",
-                            "oxygenLevel"
-                        ]
-                    },
-                    "oldValue": {
-                        "type": "number"
-                    },
-                    "newValue": {
-                        "type": "number"
-                    },
-                    "timestamp": {
-                        "type": "string"
-                    }
-                }
-            }
-        }
-    }
+    "actions": {}
 }

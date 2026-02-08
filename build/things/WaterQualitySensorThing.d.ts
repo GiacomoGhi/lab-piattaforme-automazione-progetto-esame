@@ -77,6 +77,7 @@ export declare class WaterQualitySensorThing {
     private saveConfigToFile;
     private extractString;
     private extractObject;
+    private validateConfigPayload;
     /**
      * Stop periodic sampling
      */

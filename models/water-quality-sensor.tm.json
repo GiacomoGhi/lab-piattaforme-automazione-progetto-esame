@@ -10,6 +10,12 @@
     ],
     "title": "WaterQualitySensor",
     "description": "Aquarium water quality sensor monitoring pH, temperature and oxygen levels",
+    "securityDefinitions": {
+        "nosec": {
+            "scheme": "nosec"
+        }
+    },
+    "security": "nosec",
     "properties": {
         "pH": {
             "type": "number",
@@ -108,6 +114,97 @@
         "config": {
             "type": "object",
             "description": "Sensor configuration including ranges and mode",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "demo",
+                        "production"
+                    ]
+                },
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pH": {
+                            "type": "object",
+                            "properties": {
+                                "unit": { "type": "string" },
+                                "description": { "type": "string" },
+                                "configurable": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                },
+                                "optimal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                }
+                            },
+                            "required": ["unit", "description", "configurable", "optimal"]
+                        },
+                        "temperature": {
+                            "type": "object",
+                            "properties": {
+                                "unit": { "type": "string" },
+                                "description": { "type": "string" },
+                                "configurable": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                },
+                                "optimal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                }
+                            },
+                            "required": ["unit", "description", "configurable", "optimal"]
+                        },
+                        "oxygenLevel": {
+                            "type": "object",
+                            "properties": {
+                                "unit": { "type": "string" },
+                                "description": { "type": "string" },
+                                "configurable": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                },
+                                "optimal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                }
+                            },
+                            "required": ["unit", "description", "configurable", "optimal"]
+                        }
+                    },
+                    "required": ["pH", "temperature", "oxygenLevel"]
+                },
+                "modes": {
+                    "type": "object"
+                }
+            },
+            "required": ["mode", "parameters"],
             "observable": true,
             "readOnly": false
         }

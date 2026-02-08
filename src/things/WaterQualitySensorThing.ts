@@ -146,7 +146,13 @@ export class WaterQualitySensorThing {
     this.thing.setPropertyWriteHandler("config", async (value) => {
       const nextConfig = await this.extractObject<AppConfig>(value);
       if (!nextConfig?.parameters || !nextConfig.mode) {
-        console.warn("[Sensor] ⚠️ Invalid config payload, ignoring.");
+        console.warn("[Sensor] Invalid config payload, ignoring.");
+        return;
+      }
+
+      const validation = this.validateConfigPayload(nextConfig);
+      if (!validation.ok) {
+        console.warn(`[Sensor] Invalid config payload: ${validation.message}`);
         return;
       }
 
@@ -519,6 +525,49 @@ export class WaterQualitySensorThing {
       return (await input.value()) as T;
     }
     return input as T;
+  }
+
+  private validateConfigPayload(config: AppConfig): { ok: boolean; message?: string } {
+    if (config.mode !== "demo" && config.mode !== "production") {
+      return { ok: false, message: "mode must be demo or production" };
+    }
+
+    const requiredParams = ["pH", "temperature", "oxygenLevel"] as const;
+
+    for (const param of requiredParams) {
+      const paramConfig = config.parameters[param];
+      if (!paramConfig) {
+        return { ok: false, message: `${param} is missing` };
+      }
+
+      const optimalMin = Number(paramConfig.optimal?.min);
+      const optimalMax = Number(paramConfig.optimal?.max);
+      const confMin = Number(paramConfig.configurable?.min);
+      const confMax = Number(paramConfig.configurable?.max);
+
+      if (
+        !Number.isFinite(optimalMin) ||
+        !Number.isFinite(optimalMax) ||
+        !Number.isFinite(confMin) ||
+        !Number.isFinite(confMax)
+      ) {
+        return { ok: false, message: `${param} has non-numeric bounds` };
+      }
+
+      if (confMin >= confMax) {
+        return { ok: false, message: `${param} configurable min must be less than max` };
+      }
+
+      if (optimalMin >= optimalMax) {
+        return { ok: false, message: `${param} optimal min must be less than max` };
+      }
+
+      if (optimalMin < confMin || optimalMax > confMax) {
+        return { ok: false, message: `${param} optimal range must be within configurable range` };
+      }
+    }
+
+    return { ok: true };
   }
 
   /**

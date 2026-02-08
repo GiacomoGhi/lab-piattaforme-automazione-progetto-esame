@@ -144,7 +144,12 @@ class WaterQualitySensorThing {
             this.thing.setPropertyWriteHandler("config", (value) => __awaiter(this, void 0, void 0, function* () {
                 const nextConfig = yield this.extractObject(value);
                 if (!(nextConfig === null || nextConfig === void 0 ? void 0 : nextConfig.parameters) || !nextConfig.mode) {
-                    console.warn("[Sensor] ⚠️ Invalid config payload, ignoring.");
+                    console.warn("[Sensor] Invalid config payload, ignoring.");
+                    return;
+                }
+                const validation = this.validateConfigPayload(nextConfig);
+                if (!validation.ok) {
+                    console.warn(`[Sensor] Invalid config payload: ${validation.message}`);
                     return;
                 }
                 this.config = nextConfig;
@@ -467,6 +472,39 @@ class WaterQualitySensorThing {
             }
             return input;
         });
+    }
+    validateConfigPayload(config) {
+        var _a, _b, _c, _d;
+        if (config.mode !== "demo" && config.mode !== "production") {
+            return { ok: false, message: "mode must be demo or production" };
+        }
+        const requiredParams = ["pH", "temperature", "oxygenLevel"];
+        for (const param of requiredParams) {
+            const paramConfig = config.parameters[param];
+            if (!paramConfig) {
+                return { ok: false, message: `${param} is missing` };
+            }
+            const optimalMin = Number((_a = paramConfig.optimal) === null || _a === void 0 ? void 0 : _a.min);
+            const optimalMax = Number((_b = paramConfig.optimal) === null || _b === void 0 ? void 0 : _b.max);
+            const confMin = Number((_c = paramConfig.configurable) === null || _c === void 0 ? void 0 : _c.min);
+            const confMax = Number((_d = paramConfig.configurable) === null || _d === void 0 ? void 0 : _d.max);
+            if (!Number.isFinite(optimalMin) ||
+                !Number.isFinite(optimalMax) ||
+                !Number.isFinite(confMin) ||
+                !Number.isFinite(confMax)) {
+                return { ok: false, message: `${param} has non-numeric bounds` };
+            }
+            if (confMin >= confMax) {
+                return { ok: false, message: `${param} configurable min must be less than max` };
+            }
+            if (optimalMin >= optimalMax) {
+                return { ok: false, message: `${param} optimal min must be less than max` };
+            }
+            if (optimalMin < confMin || optimalMax > confMax) {
+                return { ok: false, message: `${param} optimal range must be within configurable range` };
+            }
+        }
+        return { ok: true };
     }
     /**
      * Stop periodic sampling
