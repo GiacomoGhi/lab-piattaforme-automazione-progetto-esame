@@ -151,14 +151,11 @@ function computePumpSpeed(statuses: Record<string, ParameterStatus>): number {
     wotRuntime,
     filterPumpProxyTD,
     filterPumpModbusTD,
-    water
   );
   await filterPump.start();
   console.log("OK: Filter Pump exposed (HTTP Proxy -> Modbus)\n");
 
-  // Start initial water degradation simulation (pump starts off)
-  water.startDegradationSimulation();
-  console.log("Water degradation simulation started\n");
+  // Water degradation simulation is managed internally by WaterThing
 
   // Create HTTP client to consume things for orchestration
   const clientServient = new Servient();

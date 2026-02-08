@@ -7,7 +7,9 @@ export declare class WaterThing {
     private state;
     private degradationConfig;
     private degradationInterval;
+    private cycleRotationInterval;
     private simulationActive;
+    private cycleDurationMs;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription);
     /**
      * Start the Water Digital Twin
@@ -30,13 +32,13 @@ export declare class WaterThing {
      */
     setState(updates: Partial<WaterState>): Promise<void>;
     /**
-     * Start degradation simulation (called when pump turns off)
+     * Start degradation simulation (runs continuously)
      */
-    startDegradationSimulation(): void;
+    private startDegradationSimulation;
     /**
-     * Stop degradation simulation and prepare for next cycle
+     * Stop degradation simulation (used on shutdown)
      */
-    stopDegradationSimulation(): void;
+    private stopDegradationSimulation;
     /**
      * Check if all parameters are within optimal range
      */

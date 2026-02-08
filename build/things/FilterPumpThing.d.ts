@@ -1,5 +1,4 @@
 import WoT from "wot-typescript-definitions";
-import type { WaterThing } from "./WaterThing";
 /**
  * FilterPumpThing - Modbus Proxy for aquarium filter pump.
  *
@@ -25,10 +24,9 @@ export declare class FilterPumpThing {
     private modbusTD;
     private thing;
     private consumedModbus;
-    private waterThing;
     private state;
     private modbusPollInterval;
-    constructor(runtime: typeof WoT, proxyTD: WoT.ThingDescription, modbusTD: WoT.ThingDescription, waterThing?: WaterThing);
+    constructor(runtime: typeof WoT, proxyTD: WoT.ThingDescription, modbusTD: WoT.ThingDescription);
     /**
      * Start the filter pump thing
      */

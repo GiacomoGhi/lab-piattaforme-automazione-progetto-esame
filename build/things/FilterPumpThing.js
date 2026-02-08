@@ -11,9 +11,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FilterPumpThing = void 0;
 class FilterPumpThing {
-    constructor(runtime, proxyTD, modbusTD, waterThing) {
+    constructor(runtime, proxyTD, modbusTD) {
         this.consumedModbus = null;
-        this.waterThing = null;
         this.state = {
             pumpSpeed: 0,
             filterStatus: "idle",
@@ -24,7 +23,6 @@ class FilterPumpThing {
         this.runtime = runtime;
         this.proxyTD = proxyTD;
         this.modbusTD = modbusTD;
-        this.waterThing = waterThing || null;
     }
     /**
      * Start the filter pump thing
@@ -66,22 +64,12 @@ class FilterPumpThing {
                     speedValue = params;
                 }
                 const newSpeed = Math.max(0, Math.min(100, Number(speedValue)));
-                const wasRunning = this.state.pumpSpeed > 0;
-                const nowRunning = newSpeed > 0;
                 this.state.pumpSpeed = newSpeed;
                 if (newSpeed === 0) {
                     this.state.filterStatus = "idle";
-                    // Start water degradation if available
-                    if (this.waterThing) {
-                        this.waterThing.startDegradationSimulation();
-                    }
                 }
                 else if (this.state.filterStatus !== "cleaning") {
                     this.state.filterStatus = "running";
-                    // Pump turning on - stop degradation
-                    if (!wasRunning && nowRunning && this.waterThing) {
-                        this.waterThing.stopDegradationSimulation();
-                    }
                 }
                 try {
                     if (this.consumedModbus) {
@@ -158,7 +146,7 @@ class FilterPumpThing {
             if (this.state.filterHealth !== previousState.filterHealth) {
                 this.thing.emitPropertyChange("filterHealth");
             }
-        }), 1000);
+        }), 3000);
     }
     /**
      * Stop the thing

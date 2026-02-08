@@ -1,5 +1,4 @@
 import WoT from "wot-typescript-definitions";
-import type { WaterThing } from "./WaterThing";
 
 /**
  * FilterPumpThing - Modbus Proxy for aquarium filter pump.
@@ -28,7 +27,6 @@ export class FilterPumpThing {
   private modbusTD: WoT.ThingDescription;
   private thing!: WoT.ExposedThing;
   private consumedModbus: WoT.ConsumedThing | null = null;
-  private waterThing: WaterThing | null = null;
 
   private state: PumpState = {
     pumpSpeed: 0,
@@ -43,12 +41,10 @@ export class FilterPumpThing {
     runtime: typeof WoT,
     proxyTD: WoT.ThingDescription,
     modbusTD: WoT.ThingDescription,
-    waterThing?: WaterThing,
   ) {
     this.runtime = runtime;
     this.proxyTD = proxyTD;
     this.modbusTD = modbusTD;
-    this.waterThing = waterThing || null;
   }
 
   /**
@@ -96,23 +92,12 @@ export class FilterPumpThing {
       }
       const newSpeed = Math.max(0, Math.min(100, Number(speedValue)));
       
-      const wasRunning = this.state.pumpSpeed > 0;
-      const nowRunning = newSpeed > 0;
-
       this.state.pumpSpeed = newSpeed;
 
       if (newSpeed === 0) {
         this.state.filterStatus = "idle";
-        // Start water degradation if available
-        if (this.waterThing) {
-          this.waterThing.startDegradationSimulation();
-        }
       } else if (this.state.filterStatus !== "cleaning") {
         this.state.filterStatus = "running";
-        // Pump turning on - stop degradation
-        if (!wasRunning && nowRunning && this.waterThing) {
-          this.waterThing.stopDegradationSimulation();
-        }
       }
 
       try {

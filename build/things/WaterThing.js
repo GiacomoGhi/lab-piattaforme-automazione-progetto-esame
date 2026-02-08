@@ -29,7 +29,9 @@ class WaterThing {
             acceleratedParameterIndex: 0, // 0=pH, 1=temperature, 2=oxygenLevel
         };
         this.degradationInterval = null;
+        this.cycleRotationInterval = null;
         this.simulationActive = false;
+        this.cycleDurationMs = 30000;
         this.runtime = runtime;
         this.td = td;
     }
@@ -69,6 +71,8 @@ class WaterThing {
             yield this.thing.expose();
             const title = this.td.title || "Water";
             console.log(`💧 ${title} Digital Twin started! Go to: http://localhost:8080/${title.toLowerCase()}`);
+            this.startDegradationSimulation();
+            console.log("Water degradation simulation started");
         });
     }
     /**
@@ -131,7 +135,7 @@ class WaterThing {
         });
     }
     /**
-     * Start degradation simulation (called when pump turns off)
+     * Start degradation simulation (runs continuously)
      */
     startDegradationSimulation() {
         if (this.simulationActive) {
@@ -142,6 +146,9 @@ class WaterThing {
         console.log(`[Water DT] 🌊 Starting degradation simulation (Cycle ${this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"})`);
         if (this.degradationInterval) {
             clearInterval(this.degradationInterval);
+        }
+        if (this.cycleRotationInterval) {
+            clearInterval(this.cycleRotationInterval);
         }
         const parametersMap = ["pH", "temperature", "oxygenLevel"];
         this.degradationInterval = setInterval(() => __awaiter(this, void 0, void 0, function* () {
@@ -176,9 +183,18 @@ class WaterThing {
             yield this.thing.emitPropertyChange("temperature");
             yield this.thing.emitPropertyChange("oxygenLevel");
         }), 1000); // Every second
+        this.cycleRotationInterval = setInterval(() => {
+            if (!this.simulationActive)
+                return;
+            this.degradationConfig.currentTestCycle =
+                this.degradationConfig.currentTestCycle === 0 ? 1 : 0;
+            this.degradationConfig.acceleratedParameterIndex =
+                (this.degradationConfig.acceleratedParameterIndex + 1) % 3;
+            console.log(`[Water DT] 🔁 Cycle switched to ${this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"}, Accelerated param: ${["pH", "temperature", "oxygenLevel"][this.degradationConfig.acceleratedParameterIndex]}`);
+        }, this.cycleDurationMs);
     }
     /**
-     * Stop degradation simulation and prepare for next cycle
+     * Stop degradation simulation (used on shutdown)
      */
     stopDegradationSimulation() {
         if (!this.simulationActive)
@@ -188,10 +204,11 @@ class WaterThing {
             clearInterval(this.degradationInterval);
             this.degradationInterval = null;
         }
-        // Rotate to next cycle
-        this.degradationConfig.currentTestCycle = this.degradationConfig.currentTestCycle === 0 ? 1 : 0;
-        this.degradationConfig.acceleratedParameterIndex = (this.degradationConfig.acceleratedParameterIndex + 1) % 3;
-        console.log(`[Water DT] ⏹️ Degradation simulation stopped. Next: Cycle ${this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"}, Accelerated param: ${["pH", "temperature", "oxygenLevel"][this.degradationConfig.acceleratedParameterIndex]}`);
+        if (this.cycleRotationInterval) {
+            clearInterval(this.cycleRotationInterval);
+            this.cycleRotationInterval = null;
+        }
+        console.log("[Water DT] ⏹️ Degradation simulation stopped");
     }
     /**
      * Check if all parameters are within optimal range
