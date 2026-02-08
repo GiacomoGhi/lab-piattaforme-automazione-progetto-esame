@@ -26,13 +26,14 @@ export declare class WaterQualitySensorThing {
     private config;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription, samplingIntervalMs?: number);
     /**
-     * Start the thing and subscribe to Water Digital Twin
+     * Start the thing and connect to Water Digital Twin
      */
     startAsync(): Promise<void>;
     /**
-     * Subscribe to the Water Digital Twin to receive state updates
+     * Connect to the Water Digital Twin (polling mode)
      */
-    private subscribeToWaterDigitalTwin;
+    private connectToWaterDigitalTwin;
+    private scheduleConnectAndStartPolling;
     /**
      * Read initial state from Water Digital Twin
      */

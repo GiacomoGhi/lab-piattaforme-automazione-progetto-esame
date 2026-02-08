@@ -66,7 +66,7 @@ export class WaterQualitySensorThing {
   }
 
   /**
-   * Start the thing and subscribe to Water Digital Twin
+   * Start the thing and connect to Water Digital Twin
    */
   public async startAsync(): Promise<void> {
     this.thing = await this.runtime.produce(this.td);
@@ -177,14 +177,14 @@ export class WaterQualitySensorThing {
       } thing started! Go to: http://localhost:8080/${this.td.title?.toLowerCase()}`
     );
 
-    // Subscribe to Water Digital Twin after a short delay to ensure it's ready
-    setTimeout(() => this.subscribeToWaterDigitalTwin(), 2000);
+    // Connect after a short delay to ensure the Water Thing is ready
+    this.scheduleConnectAndStartPolling(2000);
   }
 
   /**
-   * Subscribe to the Water Digital Twin to receive state updates
+   * Connect to the Water Digital Twin (polling mode)
    */
-  private async subscribeToWaterDigitalTwin(): Promise<void> {
+  private async connectToWaterDigitalTwin(): Promise<boolean> {
     try {
       console.log("[Sensor] 🔗 Connecting to Water Digital Twin...");
 
@@ -235,16 +235,28 @@ export class WaterQualitySensorThing {
       */
       console.log("[Sensor] 📡 PUB/SUB disabled - using polling mode only");
 
+      return true;
+    } catch (error) {
+      console.error("[Sensor] ❌ Failed to connect to Water Digital Twin:", error);
+      return false;
+    }
+  }
+
+  private scheduleConnectAndStartPolling(delayMs: number): void {
+    setTimeout(async () => {
+      const connected = await this.connectToWaterDigitalTwin();
+      if (!connected) {
+        console.log("[Sensor] Will retry connection in 5 seconds...");
+        this.scheduleConnectAndStartPolling(5000);
+        return;
+      }
+
       // Start periodic sampling
       this.startSampling();
 
       // Initial read of all water properties
       await this.readInitialWaterState();
-    } catch (error) {
-      console.error("[Sensor] ❌ Failed to connect to Water Digital Twin:", error);
-      console.log("[Sensor] ⏳ Will retry in 5 seconds...");
-      setTimeout(() => this.subscribeToWaterDigitalTwin(), 5000);
-    }
+    }, delayMs);
   }
 
   /**

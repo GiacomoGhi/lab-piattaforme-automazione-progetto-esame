@@ -299,7 +299,7 @@ function computePumpSpeed(statuses: Record<string, ParameterStatus>): number {
     } catch (error) {
       console.error("Error reading status:", error);
     }
-  }, 10000);
+  }, 12000);
 
   console.log("Aquarium Monitor running. Press Ctrl+C to stop.");
   console.log("Make sure the Modbus mock server is running!");

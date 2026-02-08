@@ -2,7 +2,7 @@
 // Polls the Things via HTTP and updates the UI
 
 const BASE_URL = "http://localhost:8080";
-const POLL_INTERVAL = 2000; // ms
+const POLL_INTERVAL = 3000; // ms
 
 // Configuration loaded from API
 let OPTIMAL_RANGES = {

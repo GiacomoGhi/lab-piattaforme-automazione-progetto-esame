@@ -77,7 +77,7 @@ class WaterQualitySensorThing {
         }
     }
     /**
-     * Start the thing and subscribe to Water Digital Twin
+     * Start the thing and connect to Water Digital Twin
      */
     startAsync() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -165,14 +165,14 @@ class WaterQualitySensorThing {
             }));
             yield this.thing.expose();
             console.log(`${this.td.title} thing started! Go to: http://localhost:8080/${(_a = this.td.title) === null || _a === void 0 ? void 0 : _a.toLowerCase()}`);
-            // Subscribe to Water Digital Twin after a short delay to ensure it's ready
-            setTimeout(() => this.subscribeToWaterDigitalTwin(), 2000);
+            // Connect after a short delay to ensure the Water Thing is ready
+            this.scheduleConnectAndStartPolling(2000);
         });
     }
     /**
-     * Subscribe to the Water Digital Twin to receive state updates
+     * Connect to the Water Digital Twin (polling mode)
      */
-    subscribeToWaterDigitalTwin() {
+    connectToWaterDigitalTwin() {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 console.log("[Sensor] 🔗 Connecting to Water Digital Twin...");
@@ -218,17 +218,27 @@ class WaterQualitySensorThing {
                 console.log("[Sensor] 📡 Subscribed to Water Digital Twin events");
                 */
                 console.log("[Sensor] 📡 PUB/SUB disabled - using polling mode only");
-                // Start periodic sampling
-                this.startSampling();
-                // Initial read of all water properties
-                yield this.readInitialWaterState();
+                return true;
             }
             catch (error) {
                 console.error("[Sensor] ❌ Failed to connect to Water Digital Twin:", error);
-                console.log("[Sensor] ⏳ Will retry in 5 seconds...");
-                setTimeout(() => this.subscribeToWaterDigitalTwin(), 5000);
+                return false;
             }
         });
+    }
+    scheduleConnectAndStartPolling(delayMs) {
+        setTimeout(() => __awaiter(this, void 0, void 0, function* () {
+            const connected = yield this.connectToWaterDigitalTwin();
+            if (!connected) {
+                console.log("[Sensor] Will retry connection in 5 seconds...");
+                this.scheduleConnectAndStartPolling(5000);
+                return;
+            }
+            // Start periodic sampling
+            this.startSampling();
+            // Initial read of all water properties
+            yield this.readInitialWaterState();
+        }), delayMs);
     }
     /**
      * Read initial state from Water Digital Twin

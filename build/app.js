@@ -275,7 +275,7 @@ function computePumpSpeed(statuses) {
             catch (error) {
                 console.error("Error reading status:", error);
             }
-        }), 10000);
+        }), 12000);
         console.log("Aquarium Monitor running. Press Ctrl+C to stop.");
         console.log("Make sure the Modbus mock server is running!");
         console.log("Run: npx ts-node src/mock/ModbusFilterPumpMockServer.ts\n");
