@@ -1,19 +1,4 @@
 "use strict";
-/**
- * ModbusFilterPumpMockServer (Simulator)
- *
- * Simulates a Modbus TCP device representing a filter pump.
- * This is a simplified in-memory simulator that doesn't require a real Modbus server library.
- *
- * Simulates the following holding registers:
- * - Register 0: pumpSpeed (0-100)
- * - Register 1: filterStatus (0=idle, 1=running, 2=cleaning, 3=error)
- * - Register 2: filterHealth (0-100)
- * - Register 3: cleaningCommand (write 1 to trigger cleaning)
- *
- * Note: For a real Modbus server, use libraries like 'node-modbus' or 'modbus-tcp-server'.
- * This is a mock for testing and demo purposes.
- */
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -23,10 +8,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+const modbus_serial_1 = __importDefault(require("modbus-serial"));
 class ModbusFilterPumpMockServer {
-    constructor(port) {
+    constructor(port, waterEndpoint) {
         this.port = 502;
+        this.waterEndpoint = "http://localhost:8080/water";
+        this.server = null;
         this.registers = {
             0: 30, // pumpSpeed (initial 30%)
             1: 0, // filterStatus (0=idle)
@@ -36,8 +27,14 @@ class ModbusFilterPumpMockServer {
         this.simulationActive = true;
         this.lastCleaningTime = Date.now();
         this.simulationIntervals = [];
+        this.waterCorrectionInterval = null;
+        this.waterReachable = false;
+        this.waterRetryDelayMs = 1000;
+        this.waterNextRetryAt = 0;
         if (port)
             this.port = port;
+        if (waterEndpoint)
+            this.waterEndpoint = waterEndpoint;
     }
     /**
      * Start the mock Modbus simulator
@@ -45,10 +42,18 @@ class ModbusFilterPumpMockServer {
     start() {
         return __awaiter(this, void 0, void 0, function* () {
             console.log("🔧 Starting Modbus Mock Server Simulator...");
+            const vector = this.getModbusVector();
+            this.server = new modbus_serial_1.default.ServerTCP(vector, {
+                host: "127.0.0.1",
+                port: this.port,
+                unitID: 1,
+                debug: false,
+            });
             yield new Promise((resolve) => setTimeout(resolve, 100));
             console.log(`✅ Mock Modbus Server listening on 127.0.0.1:${this.port}`);
             // Start simulation loop
             this.startSimulation();
+            this.startWaterCorrectionLoop();
         });
     }
     /**
@@ -126,6 +131,150 @@ class ModbusFilterPumpMockServer {
         this.simulationIntervals.push(degradationInterval);
     }
     /**
+     * Apply water correction based on pump speed
+     */
+    startWaterCorrectionLoop() {
+        if (this.waterCorrectionInterval) {
+            clearInterval(this.waterCorrectionInterval);
+        }
+        this.waterCorrectionInterval = setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            if (!this.simulationActive)
+                return;
+            const pumpSpeed = this.registers[0];
+            if (pumpSpeed <= 0)
+                return;
+            if (!this.canAttemptWaterRead()) {
+                return;
+            }
+            try {
+                const waterState = yield this.readWaterState();
+                if (!waterState) {
+                    this.onWaterReadFailure();
+                    return;
+                }
+                this.onWaterReadSuccess();
+                const targets = this.loadOptimalTargetsFromConfig();
+                const speedFactor = Math.max(0, Math.min(1, pumpSpeed / 100));
+                const maxStep = 0.8 * speedFactor;
+                yield this.applyWaterCorrections(waterState, targets, maxStep);
+            }
+            catch (error) {
+                this.onWaterReadFailure();
+            }
+        }), 1000);
+    }
+    readWaterState() {
+        return __awaiter(this, void 0, void 0, function* () {
+            let response;
+            try {
+                response = yield fetch(`${this.waterEndpoint}/properties`);
+            }
+            catch (error) {
+                return null;
+            }
+            if (!response.ok) {
+                return null;
+            }
+            const data = yield response.json();
+            if (typeof data.pH !== "number" ||
+                typeof data.temperature !== "number" ||
+                typeof data.oxygenLevel !== "number") {
+                return null;
+            }
+            return {
+                pH: data.pH,
+                temperature: data.temperature,
+                oxygenLevel: data.oxygenLevel,
+            };
+        });
+    }
+    canAttemptWaterRead() {
+        if (this.waterNextRetryAt === 0) {
+            return true;
+        }
+        return Date.now() >= this.waterNextRetryAt;
+    }
+    onWaterReadSuccess() {
+        if (!this.waterReachable) {
+            console.log("[Modbus] Water endpoint available.");
+        }
+        this.waterReachable = true;
+        this.waterRetryDelayMs = 1000;
+        this.waterNextRetryAt = 0;
+    }
+    onWaterReadFailure() {
+        if (this.waterReachable) {
+            console.warn(`[Modbus] Water endpoint unavailable, retrying in ${this.waterRetryDelayMs}ms.`);
+        }
+        this.waterReachable = false;
+        this.waterNextRetryAt = Date.now() + this.waterRetryDelayMs;
+        this.waterRetryDelayMs = Math.min(this.waterRetryDelayMs * 2, 15000);
+    }
+    applyWaterCorrections(current, targets, maxStep) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const updates = {};
+            for (const key of ["pH", "temperature", "oxygenLevel"]) {
+                const delta = targets[key] - current[key];
+                if (Math.abs(delta) < 0.01 || maxStep === 0) {
+                    continue;
+                }
+                const correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
+                if (Math.abs(correction) > 0.01) {
+                    updates[key] = current[key] + correction;
+                }
+            }
+            const entries = Object.entries(updates);
+            for (const [key, value] of entries) {
+                yield this.writeWaterProperty(key, value);
+            }
+        });
+    }
+    writeWaterProperty(property, value) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield fetch(`${this.waterEndpoint}/properties/${property}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(value),
+            });
+        });
+    }
+    loadOptimalTargetsFromConfig() {
+        try {
+            const fs = require("fs");
+            const path = require("path");
+            const configPath = path.join(process.cwd(), "config.json");
+            const configContent = fs.readFileSync(configPath, "utf-8");
+            const config = JSON.parse(configContent);
+            const defaults = {
+                pH: 7.0,
+                temperature: 25.0,
+                oxygenLevel: 7.0,
+            };
+            if (!(config === null || config === void 0 ? void 0 : config.parameters)) {
+                return defaults;
+            }
+            const targets = Object.assign({}, defaults);
+            for (const key of ["pH", "temperature", "oxygenLevel"]) {
+                const paramConfig = config.parameters[key];
+                if (paramConfig === null || paramConfig === void 0 ? void 0 : paramConfig.optimal) {
+                    const min = Number(paramConfig.optimal.min);
+                    const max = Number(paramConfig.optimal.max);
+                    if (!Number.isNaN(min) && !Number.isNaN(max)) {
+                        targets[key] = (min + max) / 2;
+                    }
+                }
+            }
+            return targets;
+        }
+        catch (error) {
+            return {
+                pH: 7.0,
+                temperature: 25.0,
+                oxygenLevel: 7.0,
+            };
+        }
+    }
+    /**
      * Get human-readable status name
      */
     getStatusName(status) {
@@ -152,6 +301,17 @@ class ModbusFilterPumpMockServer {
         this.registers[address] = value;
         this.onRegisterChange(address, value);
     }
+    getModbusVector() {
+        return {
+            getHoldingRegister: (address) => {
+                const value = this.readRegister(address);
+                return Math.round(value);
+            },
+            setRegister: (address, value) => {
+                this.writeRegister(address, value);
+            },
+        };
+    }
     /**
      * Stop the server
      */
@@ -159,6 +319,14 @@ class ModbusFilterPumpMockServer {
         console.log("🛑 Stopping Modbus Mock Server...");
         this.simulationActive = false;
         this.simulationIntervals.forEach((interval) => clearInterval(interval));
+        if (this.waterCorrectionInterval) {
+            clearInterval(this.waterCorrectionInterval);
+            this.waterCorrectionInterval = null;
+        }
+        if (this.server) {
+            this.server.close();
+            this.server = null;
+        }
     }
     /**
      * Get current register values
@@ -174,7 +342,7 @@ class ModbusFilterPumpMockServer {
     }
 }
 // ===== MAIN EXECUTION =====
-const modbusServer = new ModbusFilterPumpMockServer(502);
+const modbusServer = new ModbusFilterPumpMockServer(502, "http://localhost:8080/water");
 modbusServer.start().catch((error) => {
     console.error("Failed to start Modbus server:", error);
     process.exit(1);

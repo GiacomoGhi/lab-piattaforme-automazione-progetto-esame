@@ -1,5 +1,10 @@
 {
-  "@context": "https://www.w3.org/2022/wot/td/v1.1",
+  "@context": [
+    "https://www.w3.org/2022/wot/td/v1.1",
+    {
+      "modv": "http://www.modbus.org/specs.php"
+    }
+  ],
   "title": "FilterPumpModbus",
   "description": "Modbus TCP device descriptor for aquarium filter pump. Communicates via Modbus registers.",
   "properties": {
@@ -10,8 +15,9 @@
       "maximum": 100,
       "forms": [
         {
-          "href": "modbus+tcp://127.0.0.1:502/holding/0",
-          "contentType": "application/json"
+          "href": "modbus+tcp://127.0.0.1:502/1/0?quantity=1",
+          "contentType": "application/octet-stream;length=2;byteSeq=BIG_ENDIAN",
+          "modv:entity": "HoldingRegister"
         }
       ]
     },
@@ -22,8 +28,9 @@
       "maximum": 3,
       "forms": [
         {
-          "href": "modbus+tcp://127.0.0.1:502/holding/1",
-          "contentType": "application/json"
+          "href": "modbus+tcp://127.0.0.1:502/1/1?quantity=1",
+          "contentType": "application/octet-stream;length=2;byteSeq=BIG_ENDIAN",
+          "modv:entity": "HoldingRegister"
         }
       ]
     },
@@ -34,8 +41,9 @@
       "maximum": 100,
       "forms": [
         {
-          "href": "modbus+tcp://127.0.0.1:502/holding/2",
-          "contentType": "application/json"
+          "href": "modbus+tcp://127.0.0.1:502/1/2?quantity=1",
+          "contentType": "application/octet-stream;length=2;byteSeq=BIG_ENDIAN",
+          "modv:entity": "HoldingRegister"
         }
       ]
     }
@@ -50,9 +58,10 @@
       },
       "forms": [
         {
-          "href": "modbus+tcp://127.0.0.1:502/holding/0",
-          "contentType": "application/json",
-          "op": "writeproperty"
+          "href": "modbus+tcp://127.0.0.1:502/1/0?quantity=1",
+          "contentType": "application/octet-stream;length=2;byteSeq=BIG_ENDIAN",
+          "op": ["invokeaction", "writeproperty"],
+          "modv:entity": "HoldingRegister"
         }
       ]
     },
@@ -63,9 +72,10 @@
       },
       "forms": [
         {
-          "href": "modbus+tcp://127.0.0.1:502/holding/3",
-          "contentType": "application/json",
-          "op": "writeproperty"
+          "href": "modbus+tcp://127.0.0.1:502/1/3?quantity=1",
+          "contentType": "application/octet-stream;length=2;byteSeq=BIG_ENDIAN",
+          "op": ["invokeaction", "writeproperty"],
+          "modv:entity": "HoldingRegister"
         }
       ]
     }

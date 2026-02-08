@@ -2,7 +2,7 @@
  * ModbusFilterPumpMockServer (Simulator)
  *
  * Simulates a Modbus TCP device representing a filter pump.
- * This is a simplified in-memory simulator that doesn't require a real Modbus server library.
+ * Uses a real Modbus TCP server (modbus-serial) with an in-memory register map.
  *
  * Simulates the following holding registers:
  * - Register 0: pumpSpeed (0-100)
@@ -10,19 +10,24 @@
  * - Register 2: filterHealth (0-100)
  * - Register 3: cleaningCommand (write 1 to trigger cleaning)
  *
- * Note: For a real Modbus server, use libraries like 'node-modbus' or 'modbus-tcp-server'.
- * This is a mock for testing and demo purposes.
+ * Note: This is still a mock for testing and demo purposes.
  */
 interface ModbusRegisters {
     [key: number]: number;
 }
 declare class ModbusFilterPumpMockServer {
     private port;
+    private waterEndpoint;
+    private server;
     private registers;
     private simulationActive;
     private lastCleaningTime;
     private simulationIntervals;
-    constructor(port?: number);
+    private waterCorrectionInterval;
+    private waterReachable;
+    private waterRetryDelayMs;
+    private waterNextRetryAt;
+    constructor(port?: number, waterEndpoint?: string);
     /**
      * Start the mock Modbus simulator
      */
@@ -40,6 +45,17 @@ declare class ModbusFilterPumpMockServer {
      */
     private startSimulation;
     /**
+     * Apply water correction based on pump speed
+     */
+    private startWaterCorrectionLoop;
+    private readWaterState;
+    private canAttemptWaterRead;
+    private onWaterReadSuccess;
+    private onWaterReadFailure;
+    private applyWaterCorrections;
+    private writeWaterProperty;
+    private loadOptimalTargetsFromConfig;
+    /**
      * Get human-readable status name
      */
     private getStatusName;
@@ -51,6 +67,7 @@ declare class ModbusFilterPumpMockServer {
      * Write to a register (simulates Modbus write)
      */
     writeRegister(address: number, value: number): void;
+    private getModbusVector;
     /**
      * Stop the server
      */

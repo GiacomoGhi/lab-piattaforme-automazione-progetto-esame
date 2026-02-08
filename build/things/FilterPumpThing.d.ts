@@ -24,13 +24,10 @@ export declare class FilterPumpThing {
     private proxyTD;
     private modbusTD;
     private thing;
-    private modbusClient;
+    private consumedModbus;
     private waterThing;
     private state;
-    private simulationInterval;
-    private healthDegradationInterval;
-    private waterCorrectionInterval;
-    private optimalTargets;
+    private modbusPollInterval;
     constructor(runtime: typeof WoT, proxyTD: WoT.ThingDescription, modbusTD: WoT.ThingDescription, waterThing?: WaterThing);
     /**
      * Start the filter pump thing
@@ -39,24 +36,16 @@ export declare class FilterPumpThing {
     /**
      * Simulate filter health degradation and status changes
      */
-    private startSimulation;
+    private startModbusPolling;
     /**
      * Stop the thing
      */
     stop(): void;
-    /**
-     * Start water correction (pump running)
-     * Updates water parameters to move towards optimal values
-     */
-    private startWaterCorrection;
-    /**
-     * Stop water correction
-     */
-    private stopWaterCorrection;
-    /**
-     * Load optimal targets from config.json (midpoint of optimal ranges)
-     */
-    private loadOptimalTargetsFromConfig;
+    private connectToModbus;
+    private ensureModbusEntities;
+    private readModbusNumber;
+    private mapStatusFromRegister;
+    private syncStateFromModbus;
     /**
      * Get current state for external use
      */

@@ -197,7 +197,12 @@ function computePumpSpeed(statuses) {
                 else {
                     console.log(`Adjusting pump speed to ${targetSpeed}% based on alerts.`);
                 }
-                yield consumedPump.invokeAction("setPumpSpeed", targetSpeed);
+                try {
+                    yield consumedPump.invokeAction("setPumpSpeed", targetSpeed);
+                }
+                catch (error) {
+                    console.error("[Orchestrator] Unable to set pump speed:", error);
+                }
             });
         }
         // Load initial statuses (if available)

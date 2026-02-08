@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node ./build/app",
     "build": "tsc",
-    "mock": "npx ts-node src/mock/ModbusFilterPumpMockServer.ts",
+    "mock": "node ./build/mock/ModbusFilterPumpMockServer.js",
+    "mock:build": "tsc && node ./build/mock/ModbusFilterPumpMockServer.js",
     "dev:build": "tsc -w",
     "dev:run": "nodemon build/app",
     "start:dev": "concurrently npm:dev:*",

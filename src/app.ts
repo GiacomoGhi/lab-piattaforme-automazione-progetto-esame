@@ -201,7 +201,11 @@ function computePumpSpeed(statuses: Record<string, ParameterStatus>): number {
       console.log(`Adjusting pump speed to ${targetSpeed}% based on alerts.`);
     }
 
-    await consumedPump.invokeAction("setPumpSpeed", targetSpeed);
+    try {
+      await consumedPump.invokeAction("setPumpSpeed", targetSpeed);
+    } catch (error) {
+      console.error("[Orchestrator] Unable to set pump speed:", error);
+    }
   }
 
   // Load initial statuses (if available)

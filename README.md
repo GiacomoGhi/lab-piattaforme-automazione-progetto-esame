@@ -77,7 +77,11 @@ npm install
 npm run build
 
 # Terminal 1: Avvia il mock server Modbus
+# (prima compila con npm run build, oppure usa direttamente mock:build)
 npm run mock
+
+# Alternativa: build + mock in un solo comando
+npm run mock:build
 
 # Terminal 2: Avvia il sistema principale
 npm start

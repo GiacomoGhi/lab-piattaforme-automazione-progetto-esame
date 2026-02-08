@@ -1,9 +1,5 @@
-import * as fs from "fs";
-import * as path from "path";
 import WoT from "wot-typescript-definitions";
-import { ModbusClient } from "@node-wot/binding-modbus";
 import type { WaterThing } from "./WaterThing";
-import type { WaterState } from "../types/WaterTypes";
 
 /**
  * FilterPumpThing - Modbus Proxy for aquarium filter pump.
@@ -26,18 +22,12 @@ interface PumpState {
   lastCleaningTime: string;
 }
 
-const DEFAULT_OPTIMAL_TARGETS: WaterState = {
-  pH: 7.0,
-  temperature: 25.0,
-  oxygenLevel: 7.0,
-};
-
 export class FilterPumpThing {
   private runtime: typeof WoT;
   private proxyTD: WoT.ThingDescription;
   private modbusTD: WoT.ThingDescription;
   private thing!: WoT.ExposedThing;
-  private modbusClient!: any;
+  private consumedModbus: WoT.ConsumedThing | null = null;
   private waterThing: WaterThing | null = null;
 
   private state: PumpState = {
@@ -47,10 +37,7 @@ export class FilterPumpThing {
     lastCleaningTime: new Date().toISOString(),
   };
 
-  private simulationInterval: NodeJS.Timeout | null = null;
-  private healthDegradationInterval: NodeJS.Timeout | null = null;
-  private waterCorrectionInterval: NodeJS.Timeout | null = null;
-  private optimalTargets: WaterState = { ...DEFAULT_OPTIMAL_TARGETS };
+  private modbusPollInterval: NodeJS.Timeout | null = null;
 
   constructor(
     runtime: typeof WoT,
@@ -71,18 +58,23 @@ export class FilterPumpThing {
     // Create the HTTP proxy thing
     this.thing = await this.runtime.produce(this.proxyTD);
 
+    await this.connectToModbus();
+
     // Set up property read handlers
     this.thing.setPropertyReadHandler("pumpSpeed", async () => {
+      await this.syncStateFromModbus();
       console.log(`> Read pumpSpeed: ${this.state.pumpSpeed}%`);
       return this.state.pumpSpeed;
     });
 
     this.thing.setPropertyReadHandler("filterStatus", async () => {
+      await this.syncStateFromModbus();
       console.log(`> Read filterStatus: ${this.state.filterStatus}`);
       return this.state.filterStatus;
     });
 
     this.thing.setPropertyReadHandler("filterHealth", async () => {
+      await this.syncStateFromModbus();
       const roundedHealth = Math.round(this.state.filterHealth);
       console.log(`> Read filterHealth: ${roundedHealth}%`);
       return roundedHealth;
@@ -109,30 +101,32 @@ export class FilterPumpThing {
 
       this.state.pumpSpeed = newSpeed;
 
-      const statusMap: Record<
-        number,
-        "idle" | "running" | "cleaning" | "error"
-      > = {
-        0: "idle",
-        1: "running",
-        2: "running", // pump running at set speed
-      };
-
       if (newSpeed === 0) {
         this.state.filterStatus = "idle";
-        // Pump turning off - stop water correction
-        this.stopWaterCorrection();
         // Start water degradation if available
         if (this.waterThing) {
           this.waterThing.startDegradationSimulation();
         }
       } else if (this.state.filterStatus !== "cleaning") {
         this.state.filterStatus = "running";
-        // Pump turning on - start water correction
+        // Pump turning on - stop degradation
         if (!wasRunning && nowRunning && this.waterThing) {
           this.waterThing.stopDegradationSimulation();
-          this.startWaterCorrection();
         }
+      }
+
+      try {
+        if (this.consumedModbus) {
+          await this.consumedModbus.invokeAction("writePumpSpeed", newSpeed);
+          await this.syncStateFromModbus();
+        }
+      } catch (error) {
+        console.error("[FilterPump] Modbus write failed:", error);
+        return {
+          success: false,
+          newSpeed: newSpeed,
+          message: "Modbus write failed",
+        };
       }
 
       console.log(`⚙️ Pump speed set to ${newSpeed}%`);
@@ -151,20 +145,21 @@ export class FilterPumpThing {
     this.thing.setActionHandler("cleaningCycle", async () => {
       console.log(`🧹 Starting cleaning cycle...`);
 
-      this.state.filterStatus = "cleaning";
-      this.thing.emitPropertyChange("filterStatus");
+      try {
+        if (this.consumedModbus) {
+          await this.consumedModbus.invokeAction("triggerCleaning", 1);
+          await this.syncStateFromModbus();
+        }
+      } catch (error) {
+        console.error("[FilterPump] Modbus cleaning failed:", error);
+        return {
+          success: false,
+          status: "error",
+          message: "Modbus cleaning failed",
+        };
+      }
 
-      // Simulate cleaning
-      await new Promise((resolve) => setTimeout(resolve, 8000)); // 8 seconds cleaning
-
-      this.state.filterStatus = "running";
-      this.state.filterHealth = 100;
       this.state.lastCleaningTime = new Date().toISOString();
-
-      console.log(`✨ Cleaning cycle complete! Filter health restored to 100%`);
-
-      this.thing.emitPropertyChange("filterStatus");
-      this.thing.emitPropertyChange("filterHealth");
       this.thing.emitPropertyChange("lastCleaningTime");
 
       return {
@@ -181,37 +176,31 @@ export class FilterPumpThing {
       `${title} thing started! Go to: http://localhost:8080/${title.toLowerCase()}`,
     );
 
-    // Start health degradation simulation
-    this.startSimulation();
+    // Start Modbus polling to emit property changes
+    this.startModbusPolling();
   }
 
   /**
    * Simulate filter health degradation and status changes
    */
-  private startSimulation(): void {
-    // Degrade filter health based on pump speed
-    this.healthDegradationInterval = setInterval(() => {
-      // Health degrades faster at higher speeds
-      const degradationRate = (this.state.pumpSpeed / 100) * 0.5; // 0-0.5% per interval
-      this.state.filterHealth = Math.max(
-        0,
-        this.state.filterHealth - degradationRate,
-      );
+  private startModbusPolling(): void {
+    if (this.modbusPollInterval) {
+      clearInterval(this.modbusPollInterval);
+    }
 
-      // Emit changes
-      this.thing.emitPropertyChange("filterHealth");
-    }, 1000); // Check every 1 second (accelerated for demo)
+    this.modbusPollInterval = setInterval(async () => {
+      const previousState = { ...this.state };
+      await this.syncStateFromModbus();
 
-    // Simulate occasional status changes
-    this.simulationInterval = setInterval(() => {
-      // If pump is running and speed > 0, keep it running
-      if (this.state.pumpSpeed > 0 && this.state.filterStatus !== "cleaning") {
-        this.state.filterStatus = "running";
-      } else if (this.state.pumpSpeed === 0) {
-        this.state.filterStatus = "idle";
+      if (this.state.pumpSpeed !== previousState.pumpSpeed) {
+        this.thing.emitPropertyChange("pumpSpeed");
       }
-
-      this.thing.emitPropertyChange("filterStatus");
+      if (this.state.filterStatus !== previousState.filterStatus) {
+        this.thing.emitPropertyChange("filterStatus");
+      }
+      if (this.state.filterHealth !== previousState.filterHealth) {
+        this.thing.emitPropertyChange("filterHealth");
+      }
     }, 3000);
   }
 
@@ -219,109 +208,85 @@ export class FilterPumpThing {
    * Stop the thing
    */
   public stop(): void {
-    if (this.simulationInterval) {
-      clearInterval(this.simulationInterval);
-    }
-    if (this.healthDegradationInterval) {
-      clearInterval(this.healthDegradationInterval);
-    }
-    if (this.waterCorrectionInterval) {
-      clearInterval(this.waterCorrectionInterval);
+    if (this.modbusPollInterval) {
+      clearInterval(this.modbusPollInterval);
     }
   }
 
-  /**
-   * Start water correction (pump running)
-   * Updates water parameters to move towards optimal values
-   */
-  private startWaterCorrection(): void {
-    console.log("[Pump] 💧 Starting water correction...");
-
-    if (this.waterCorrectionInterval) {
-      clearInterval(this.waterCorrectionInterval);
-    }
-
-    this.waterCorrectionInterval = setInterval(async () => {
-      if (!this.waterThing || this.state.pumpSpeed === 0) {
-        this.stopWaterCorrection();
-        return;
-      }
-
-      const currentState = this.waterThing.getState();
-      const optimalTargets = this.loadOptimalTargetsFromConfig();
-
-      const speedFactor = Math.max(0, Math.min(1, this.state.pumpSpeed / 100));
-      const maxStep = 0.8 * speedFactor;
-
-      // Calculate correction for each parameter
-      const corrections: Partial<WaterState> = {};
-
-      for (const [param, targetValue] of Object.entries(optimalTargets)) {
-        const currentValue = currentState[param as keyof WaterState];
-        const delta = targetValue - currentValue;
-        let correction = 0;
-
-        if (Math.abs(delta) < 0.01 || maxStep === 0) {
-          correction = 0;
-        } else {
-          correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
-        }
-
-        if (Math.abs(correction) > 0.01) {
-          corrections[param as keyof WaterState] = currentValue + correction;
-        }
-      }
-
-      // Apply corrections
-      if (Object.keys(corrections).length > 0) {
-        await this.waterThing.setState(corrections);
-      }
-
-    }, 1000); // Every second
+  private async connectToModbus(): Promise<void> {
+    this.ensureModbusEntities();
+    this.consumedModbus = await this.runtime.consume(this.modbusTD);
   }
 
-  /**
-   * Stop water correction
-   */
-  private stopWaterCorrection(): void {
-    if (this.waterCorrectionInterval) {
-      clearInterval(this.waterCorrectionInterval);
-      this.waterCorrectionInterval = null;
+  private ensureModbusEntities(): void {
+    const td = this.modbusTD as any;
+    const ensureEntityOnForms = (forms?: Array<Record<string, unknown>>) => {
+      if (!Array.isArray(forms)) return;
+      for (const form of forms) {
+        if (!form) continue;
+        if (form["modv:entity"] == null && form["modv:function"] == null) {
+          form["modv:entity"] = "HoldingRegister";
+        }
+      }
+    };
+
+    const properties = td?.properties || {};
+    for (const prop of Object.values(properties)) {
+      ensureEntityOnForms((prop as any)?.forms);
+    }
+
+    const actions = td?.actions || {};
+    for (const action of Object.values(actions)) {
+      ensureEntityOnForms((action as any)?.forms);
     }
   }
 
-  /**
-   * Load optimal targets from config.json (midpoint of optimal ranges)
-   */
-  private loadOptimalTargetsFromConfig(): WaterState {
-    try {
-      const configPath = path.join(process.cwd(), "config.json");
-      const configContent = fs.readFileSync(configPath, "utf-8");
-      const config = JSON.parse(configContent) as any;
-
-      if (!config?.parameters) {
-        return this.optimalTargets;
-      }
-
-      const nextTargets: WaterState = { ...DEFAULT_OPTIMAL_TARGETS };
-
-      for (const key of ["pH", "temperature", "oxygenLevel"]) {
-        const paramConfig = config.parameters[key];
-        if (paramConfig?.optimal) {
-          const min = Number(paramConfig.optimal.min);
-          const max = Number(paramConfig.optimal.max);
-          if (!Number.isNaN(min) && !Number.isNaN(max)) {
-            nextTargets[key as keyof WaterState] = (min + max) / 2;
-          }
-        }
-      }
-
-      this.optimalTargets = nextTargets;
-      return nextTargets;
-    } catch (error) {
-      console.warn("[Pump] ⚠️ Failed to load optimal targets, using cached values.");
-      return this.optimalTargets;
+  private async readModbusNumber(property: string): Promise<number> {
+    if (!this.consumedModbus) {
+      return 0;
     }
+    const prop = await this.consumedModbus.readProperty(property);
+    const raw = await prop.value();
+    if (typeof raw === "number") {
+      return raw;
+    }
+    if (Buffer.isBuffer(raw)) {
+      return raw.readUInt16BE(0);
+    }
+    if (typeof raw === "string") {
+      const buffer = Buffer.from(raw, "binary");
+      if (buffer.length >= 2) {
+        return buffer.readUInt16BE(0);
+      }
+    }
+    return Number(raw);
+  }
+
+  private mapStatusFromRegister(value: number): PumpState["filterStatus"] {
+    switch (value) {
+      case 0:
+        return "idle";
+      case 1:
+        return "running";
+      case 2:
+        return "cleaning";
+      case 3:
+        return "error";
+      default:
+        return "error";
+    }
+  }
+
+  private async syncStateFromModbus(): Promise<void> {
+    if (!this.consumedModbus) return;
+
+    const pumpSpeed = await this.readModbusNumber("pumpSpeed");
+    const filterStatus = await this.readModbusNumber("filterStatus");
+    const filterHealth = await this.readModbusNumber("filterHealth");
+
+    this.state.pumpSpeed = pumpSpeed;
+    this.state.filterStatus = this.mapStatusFromRegister(filterStatus);
+    this.state.filterHealth = filterHealth;
   }
 
   /**
