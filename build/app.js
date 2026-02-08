@@ -132,7 +132,7 @@ function computePumpSpeed(statuses) {
             alertCount += 1;
         }
     }
-    const speed = warningCount * 15 + alertCount * 30;
+    const speed = warningCount * 20 + alertCount * 40;
     return Math.min(100, Math.max(0, speed));
 }
 (function main() {

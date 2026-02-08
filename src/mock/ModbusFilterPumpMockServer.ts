@@ -19,15 +19,8 @@ interface ModbusRegisters {
   [key: number]: number;
 }
 
-interface WaterTargets {
-  pH: number;
-  temperature: number;
-  oxygenLevel: number;
-}
-
 class ModbusFilterPumpMockServer {
   private port: number = 502;
-  private waterEndpoint: string = "http://localhost:8080/water";
   private server: any = null;
 
 
@@ -41,14 +34,8 @@ class ModbusFilterPumpMockServer {
   private simulationActive: boolean = true;
   private lastCleaningTime: number = Date.now();
   private simulationIntervals: NodeJS.Timeout[] = [];
-  private waterCorrectionInterval: NodeJS.Timeout | null = null;
-  private waterReachable: boolean = false;
-  private waterRetryDelayMs: number = 1000;
-  private waterNextRetryAt: number = 0;
-
-  constructor(port?: number, waterEndpoint?: string) {
+  constructor(port?: number) {
     if (port) this.port = port;
-    if (waterEndpoint) this.waterEndpoint = waterEndpoint;
   }
 
   /**
@@ -71,7 +58,6 @@ class ModbusFilterPumpMockServer {
 
     // Start simulation loop
     this.startSimulation();
-    this.startWaterCorrectionLoop();
   }
 
   /**
@@ -165,170 +151,6 @@ class ModbusFilterPumpMockServer {
     this.simulationIntervals.push(degradationInterval);
   }
 
-  /**
-   * Apply water correction based on pump speed
-   */
-  private startWaterCorrectionLoop(): void {
-    if (this.waterCorrectionInterval) {
-      clearInterval(this.waterCorrectionInterval);
-    }
-
-    this.waterCorrectionInterval = setInterval(async () => {
-      if (!this.simulationActive) return;
-
-      const pumpSpeed = this.registers[0];
-      if (pumpSpeed <= 0) return;
-
-      if (!this.canAttemptWaterRead()) {
-        return;
-      }
-
-      try {
-        const waterState = await this.readWaterState();
-        if (!waterState) {
-          this.onWaterReadFailure();
-          return;
-        }
-
-        this.onWaterReadSuccess();
-
-        const targets = this.loadOptimalTargetsFromConfig();
-        const speedFactor = Math.max(0, Math.min(1, pumpSpeed / 100));
-        const maxStep = 0.8 * speedFactor;
-
-        await this.applyWaterCorrections(waterState, targets, maxStep);
-      } catch (error) {
-        this.onWaterReadFailure();
-      }
-    }, 1000);
-  }
-
-  private async readWaterState(): Promise<WaterTargets | null> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.waterEndpoint}/properties`);
-    } catch (error) {
-      return null;
-    }
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    if (
-      typeof data.pH !== "number" ||
-      typeof data.temperature !== "number" ||
-      typeof data.oxygenLevel !== "number"
-    ) {
-      return null;
-    }
-
-    return {
-      pH: data.pH,
-      temperature: data.temperature,
-      oxygenLevel: data.oxygenLevel,
-    };
-  }
-
-  private canAttemptWaterRead(): boolean {
-    if (this.waterNextRetryAt === 0) {
-      return true;
-    }
-    return Date.now() >= this.waterNextRetryAt;
-  }
-
-  private onWaterReadSuccess(): void {
-    if (!this.waterReachable) {
-      console.log("[Modbus] Water endpoint available.");
-    }
-    this.waterReachable = true;
-    this.waterRetryDelayMs = 1000;
-    this.waterNextRetryAt = 0;
-  }
-
-  private onWaterReadFailure(): void {
-    if (this.waterReachable) {
-      console.warn(
-        `[Modbus] Water endpoint unavailable, retrying in ${this.waterRetryDelayMs}ms.`
-      );
-    }
-    this.waterReachable = false;
-    this.waterNextRetryAt = Date.now() + this.waterRetryDelayMs;
-    this.waterRetryDelayMs = Math.min(this.waterRetryDelayMs * 2, 15000);
-  }
-
-  private async applyWaterCorrections(
-    current: WaterTargets,
-    targets: WaterTargets,
-    maxStep: number
-  ): Promise<void> {
-    const updates: Partial<WaterTargets> = {};
-
-    for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
-      const delta = targets[key] - current[key];
-      if (Math.abs(delta) < 0.01 || maxStep === 0) {
-        continue;
-      }
-
-      const correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
-      if (Math.abs(correction) > 0.01) {
-        updates[key] = current[key] + correction;
-      }
-    }
-
-    const entries = Object.entries(updates) as Array<[keyof WaterTargets, number]>;
-    for (const [key, value] of entries) {
-      await this.writeWaterProperty(key, value);
-    }
-  }
-
-  private async writeWaterProperty(property: keyof WaterTargets, value: number): Promise<void> {
-    await fetch(`${this.waterEndpoint}/properties/${property}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(value),
-    });
-  }
-
-  private loadOptimalTargetsFromConfig(): WaterTargets {
-    try {
-      const fs = require("fs") as typeof import("fs");
-      const path = require("path") as typeof import("path");
-      const configPath = path.join(process.cwd(), "config.json");
-      const configContent = fs.readFileSync(configPath, "utf-8");
-      const config = JSON.parse(configContent) as any;
-
-      const defaults: WaterTargets = {
-        pH: 7.0,
-        temperature: 25.0,
-        oxygenLevel: 7.0,
-      };
-
-      if (!config?.parameters) {
-        return defaults;
-      }
-
-      const targets: WaterTargets = { ...defaults };
-      for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
-        const paramConfig = config.parameters[key];
-        if (paramConfig?.optimal) {
-          const min = Number(paramConfig.optimal.min);
-          const max = Number(paramConfig.optimal.max);
-          if (!Number.isNaN(min) && !Number.isNaN(max)) {
-            targets[key] = (min + max) / 2;
-          }
-        }
-      }
-
-      return targets;
-    } catch (error) {
-      return {
-        pH: 7.0,
-        temperature: 25.0,
-        oxygenLevel: 7.0,
-      };
-    }
-  }
 
   /**
    * Get human-readable status name
@@ -379,10 +201,6 @@ class ModbusFilterPumpMockServer {
     console.log("🛑 Stopping Modbus Mock Server...");
     this.simulationActive = false;
     this.simulationIntervals.forEach((interval) => clearInterval(interval));
-    if (this.waterCorrectionInterval) {
-      clearInterval(this.waterCorrectionInterval);
-      this.waterCorrectionInterval = null;
-    }
     if (this.server) {
       this.server.close();
       this.server = null;
@@ -406,7 +224,7 @@ class ModbusFilterPumpMockServer {
 
 // ===== MAIN EXECUTION =====
 
-const modbusServer = new ModbusFilterPumpMockServer(502, "http://localhost:8080/water");
+const modbusServer = new ModbusFilterPumpMockServer(502);
 
 modbusServer.start().catch((error) => {
   console.error("Failed to start Modbus server:", error);

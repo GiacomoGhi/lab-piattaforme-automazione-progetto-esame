@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -10,6 +43,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaterThing = void 0;
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 const OPTIMAL_VALUES = {
     pH: 7.0,
     temperature: 25.0,
@@ -32,6 +67,11 @@ class WaterThing {
         this.cycleRotationInterval = null;
         this.simulationActive = false;
         this.cycleDurationMs = 30000;
+        this.correctionInterval = null;
+        this.consumedPump = null;
+        this.pumpReachable = false;
+        this.pumpRetryDelayMs = 1000;
+        this.pumpNextRetryAt = 0;
         this.runtime = runtime;
         this.td = td;
     }
@@ -73,6 +113,8 @@ class WaterThing {
             console.log(`💧 ${title} Digital Twin started! Go to: http://localhost:8080/${title.toLowerCase()}`);
             this.startDegradationSimulation();
             console.log("Water degradation simulation started");
+            this.scheduleConnectToPump(2000);
+            this.startCorrectionLoop();
         });
     }
     /**
@@ -210,6 +252,133 @@ class WaterThing {
         }
         console.log("[Water DT] ⏹️ Degradation simulation stopped");
     }
+    scheduleConnectToPump(delayMs) {
+        setTimeout(() => __awaiter(this, void 0, void 0, function* () {
+            const connected = yield this.connectToPump();
+            if (!connected) {
+                console.log("[Water DT] Will retry pump connection in 5 seconds...");
+                this.scheduleConnectToPump(5000);
+            }
+        }), delayMs);
+    }
+    connectToPump() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const pumpTD = yield this.runtime.requestThingDescription("http://localhost:8080/filterpump");
+                this.consumedPump = yield this.runtime.consume(pumpTD);
+                if (!this.pumpReachable) {
+                    console.log("[Water DT] Connected to Filter Pump proxy");
+                }
+                this.pumpReachable = true;
+                this.pumpRetryDelayMs = 1000;
+                this.pumpNextRetryAt = 0;
+                return true;
+            }
+            catch (error) {
+                if (this.pumpReachable) {
+                    console.warn(`[Water DT] Pump proxy unavailable, retrying in ${this.pumpRetryDelayMs}ms.`);
+                }
+                this.pumpReachable = false;
+                this.pumpNextRetryAt = Date.now() + this.pumpRetryDelayMs;
+                this.pumpRetryDelayMs = Math.min(this.pumpRetryDelayMs * 2, 15000);
+                return false;
+            }
+        });
+    }
+    canAttemptPumpRead() {
+        if (this.pumpNextRetryAt === 0) {
+            return true;
+        }
+        return Date.now() >= this.pumpNextRetryAt;
+    }
+    startCorrectionLoop() {
+        if (this.correctionInterval) {
+            clearInterval(this.correctionInterval);
+        }
+        this.correctionInterval = setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            if (!this.simulationActive)
+                return;
+            if (!this.consumedPump)
+                return;
+            if (!this.canAttemptPumpRead())
+                return;
+            let pumpSpeed = 0;
+            try {
+                const pumpSpeedProp = yield this.consumedPump.readProperty("pumpSpeed");
+                pumpSpeed = Number(yield pumpSpeedProp.value());
+            }
+            catch (error) {
+                this.consumedPump = null;
+                this.pumpReachable = false;
+                this.scheduleConnectToPump(2000);
+                return;
+            }
+            if (pumpSpeed <= 0)
+                return;
+            const targets = this.loadOptimalTargetsFromConfig();
+            const speedFactor = Math.max(0, Math.min(1, pumpSpeed / 100));
+            const maxStep = 2.2 * speedFactor;
+            yield this.applyWaterCorrections(targets, maxStep);
+        }), 1000);
+    }
+    applyWaterCorrections(targets, maxStep) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const updates = {};
+            const current = {
+                pH: this.state.pH,
+                temperature: this.state.temperature,
+                oxygenLevel: this.state.oxygenLevel,
+            };
+            for (const key of ["pH", "temperature", "oxygenLevel"]) {
+                const delta = targets[key] - current[key];
+                if (Math.abs(delta) < 0.01 || maxStep === 0) {
+                    continue;
+                }
+                const correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
+                if (Math.abs(correction) > 0.01) {
+                    updates[key] = current[key] + correction;
+                }
+            }
+            const entries = Object.entries(updates);
+            for (const [key, value] of entries) {
+                yield this.updateProperty(key, value);
+            }
+        });
+    }
+    loadOptimalTargetsFromConfig() {
+        try {
+            const configPath = path.join(process.cwd(), "config.json");
+            const configContent = fs.readFileSync(configPath, "utf-8");
+            const config = JSON.parse(configContent);
+            const defaults = {
+                pH: 7.0,
+                temperature: 25.0,
+                oxygenLevel: 7.0,
+            };
+            if (!(config === null || config === void 0 ? void 0 : config.parameters)) {
+                return defaults;
+            }
+            const targets = Object.assign({}, defaults);
+            for (const key of ["pH", "temperature", "oxygenLevel"]) {
+                const paramConfig = config.parameters[key];
+                if (paramConfig === null || paramConfig === void 0 ? void 0 : paramConfig.optimal) {
+                    const min = Number(paramConfig.optimal.min);
+                    const max = Number(paramConfig.optimal.max);
+                    if (!Number.isNaN(min) && !Number.isNaN(max)) {
+                        targets[key] = (min + max) / 2;
+                    }
+                }
+            }
+            return targets;
+        }
+        catch (error) {
+            return {
+                pH: 7.0,
+                temperature: 25.0,
+                oxygenLevel: 7.0,
+            };
+        }
+    }
     /**
      * Check if all parameters are within optimal range
      */
@@ -231,6 +400,10 @@ class WaterThing {
      */
     stop() {
         this.stopDegradationSimulation();
+        if (this.correctionInterval) {
+            clearInterval(this.correctionInterval);
+            this.correctionInterval = null;
+        }
     }
 }
 exports.WaterThing = WaterThing;

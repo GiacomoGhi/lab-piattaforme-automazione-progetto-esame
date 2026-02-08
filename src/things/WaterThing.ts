@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import WoT from "wot-typescript-definitions";
 import { WaterState } from "../types/WaterTypes";
 
@@ -17,6 +19,12 @@ import { WaterState } from "../types/WaterTypes";
 interface DegradationConfig {
   currentTestCycle: number; // 0 = increase, 1 = decrease
   acceleratedParameterIndex: number; // 0=pH, 1=temperature, 2=oxygenLevel
+}
+
+interface WaterTargets {
+  pH: number;
+  temperature: number;
+  oxygenLevel: number;
 }
 
 const OPTIMAL_VALUES = {
@@ -46,6 +54,11 @@ export class WaterThing {
   private cycleRotationInterval: NodeJS.Timeout | null = null;
   private simulationActive: boolean = false;
   private cycleDurationMs: number = 30000;
+  private correctionInterval: NodeJS.Timeout | null = null;
+  private consumedPump: WoT.ConsumedThing | null = null;
+  private pumpReachable: boolean = false;
+  private pumpRetryDelayMs: number = 1000;
+  private pumpNextRetryAt: number = 0;
 
   constructor(runtime: typeof WoT, td: WoT.ThingDescription) {
     this.runtime = runtime;
@@ -103,6 +116,8 @@ export class WaterThing {
 
     this.startDegradationSimulation();
     console.log("Water degradation simulation started");
+    this.scheduleConnectToPump(2000);
+    this.startCorrectionLoop();
   }
 
   /**
@@ -273,6 +288,148 @@ export class WaterThing {
     console.log("[Water DT] ⏹️ Degradation simulation stopped");
   }
 
+  private scheduleConnectToPump(delayMs: number): void {
+    setTimeout(async () => {
+      const connected = await this.connectToPump();
+      if (!connected) {
+        console.log("[Water DT] Will retry pump connection in 5 seconds...");
+        this.scheduleConnectToPump(5000);
+      }
+    }, delayMs);
+  }
+
+  private async connectToPump(): Promise<boolean> {
+    try {
+      const pumpTD = await this.runtime.requestThingDescription(
+        "http://localhost:8080/filterpump",
+      );
+      this.consumedPump = await this.runtime.consume(pumpTD);
+      if (!this.pumpReachable) {
+        console.log("[Water DT] Connected to Filter Pump proxy");
+      }
+      this.pumpReachable = true;
+      this.pumpRetryDelayMs = 1000;
+      this.pumpNextRetryAt = 0;
+      return true;
+    } catch (error) {
+      if (this.pumpReachable) {
+        console.warn(
+          `[Water DT] Pump proxy unavailable, retrying in ${this.pumpRetryDelayMs}ms.`,
+        );
+      }
+      this.pumpReachable = false;
+      this.pumpNextRetryAt = Date.now() + this.pumpRetryDelayMs;
+      this.pumpRetryDelayMs = Math.min(this.pumpRetryDelayMs * 2, 15000);
+      return false;
+    }
+  }
+
+  private canAttemptPumpRead(): boolean {
+    if (this.pumpNextRetryAt === 0) {
+      return true;
+    }
+    return Date.now() >= this.pumpNextRetryAt;
+  }
+
+  private startCorrectionLoop(): void {
+    if (this.correctionInterval) {
+      clearInterval(this.correctionInterval);
+    }
+
+    this.correctionInterval = setInterval(async () => {
+      if (!this.simulationActive) return;
+      if (!this.consumedPump) return;
+      if (!this.canAttemptPumpRead()) return;
+
+      let pumpSpeed = 0;
+      try {
+        const pumpSpeedProp = await this.consumedPump.readProperty("pumpSpeed");
+        pumpSpeed = Number(await pumpSpeedProp.value());
+      } catch (error) {
+        this.consumedPump = null;
+        this.pumpReachable = false;
+        this.scheduleConnectToPump(2000);
+        return;
+      }
+
+      if (pumpSpeed <= 0) return;
+
+      const targets = this.loadOptimalTargetsFromConfig();
+      const speedFactor = Math.max(0, Math.min(1, pumpSpeed / 100));
+      const maxStep = 2.2 * speedFactor;
+
+      await this.applyWaterCorrections(targets, maxStep);
+    }, 1000);
+  }
+
+  private async applyWaterCorrections(
+    targets: WaterTargets,
+    maxStep: number,
+  ): Promise<void> {
+    const updates: Partial<WaterTargets> = {};
+
+    const current: WaterTargets = {
+      pH: this.state.pH,
+      temperature: this.state.temperature,
+      oxygenLevel: this.state.oxygenLevel,
+    };
+
+    for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
+      const delta = targets[key] - current[key];
+      if (Math.abs(delta) < 0.01 || maxStep === 0) {
+        continue;
+      }
+
+      const correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
+      if (Math.abs(correction) > 0.01) {
+        updates[key] = current[key] + correction;
+      }
+    }
+
+    const entries = Object.entries(updates) as Array<[keyof WaterTargets, number]>;
+    for (const [key, value] of entries) {
+      await this.updateProperty(key, value);
+    }
+  }
+
+  private loadOptimalTargetsFromConfig(): WaterTargets {
+    try {
+      const configPath = path.join(process.cwd(), "config.json");
+      const configContent = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(configContent) as any;
+
+      const defaults: WaterTargets = {
+        pH: 7.0,
+        temperature: 25.0,
+        oxygenLevel: 7.0,
+      };
+
+      if (!config?.parameters) {
+        return defaults;
+      }
+
+      const targets: WaterTargets = { ...defaults };
+      for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
+        const paramConfig = config.parameters[key];
+        if (paramConfig?.optimal) {
+          const min = Number(paramConfig.optimal.min);
+          const max = Number(paramConfig.optimal.max);
+          if (!Number.isNaN(min) && !Number.isNaN(max)) {
+            targets[key] = (min + max) / 2;
+          }
+        }
+      }
+
+      return targets;
+    } catch (error) {
+      return {
+        pH: 7.0,
+        temperature: 25.0,
+        oxygenLevel: 7.0,
+      };
+    }
+  }
+
   /**
    * Check if all parameters are within optimal range
    */
@@ -298,5 +455,9 @@ export class WaterThing {
    */
   public stop(): void {
     this.stopDegradationSimulation();
+    if (this.correctionInterval) {
+      clearInterval(this.correctionInterval);
+      this.correctionInterval = null;
+    }
   }
 }

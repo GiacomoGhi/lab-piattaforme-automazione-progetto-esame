@@ -10,6 +10,11 @@ export declare class WaterThing {
     private cycleRotationInterval;
     private simulationActive;
     private cycleDurationMs;
+    private correctionInterval;
+    private consumedPump;
+    private pumpReachable;
+    private pumpRetryDelayMs;
+    private pumpNextRetryAt;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription);
     /**
      * Start the Water Digital Twin
@@ -39,6 +44,12 @@ export declare class WaterThing {
      * Stop degradation simulation (used on shutdown)
      */
     private stopDegradationSimulation;
+    private scheduleConnectToPump;
+    private connectToPump;
+    private canAttemptPumpRead;
+    private startCorrectionLoop;
+    private applyWaterCorrections;
+    private loadOptimalTargetsFromConfig;
     /**
      * Check if all parameters are within optimal range
      */

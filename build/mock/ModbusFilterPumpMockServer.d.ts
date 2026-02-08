@@ -17,17 +17,12 @@ interface ModbusRegisters {
 }
 declare class ModbusFilterPumpMockServer {
     private port;
-    private waterEndpoint;
     private server;
     private registers;
     private simulationActive;
     private lastCleaningTime;
     private simulationIntervals;
-    private waterCorrectionInterval;
-    private waterReachable;
-    private waterRetryDelayMs;
-    private waterNextRetryAt;
-    constructor(port?: number, waterEndpoint?: string);
+    constructor(port?: number);
     /**
      * Start the mock Modbus simulator
      */
@@ -44,17 +39,6 @@ declare class ModbusFilterPumpMockServer {
      * Simulate gradual health degradation
      */
     private startSimulation;
-    /**
-     * Apply water correction based on pump speed
-     */
-    private startWaterCorrectionLoop;
-    private readWaterState;
-    private canAttemptWaterRead;
-    private onWaterReadSuccess;
-    private onWaterReadFailure;
-    private applyWaterCorrections;
-    private writeWaterProperty;
-    private loadOptimalTargetsFromConfig;
     /**
      * Get human-readable status name
      */
