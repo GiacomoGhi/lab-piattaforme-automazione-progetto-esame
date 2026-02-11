@@ -1,12 +1,14 @@
 import WoT from "wot-typescript-definitions";
+import { ParameterStatus } from "../types/WaterTypes";
 /**
  * WaterQualitySensorThing - Monitors aquarium water quality.
  *
  * Exposes pH, temperature, and oxygenLevel properties.
- * Emits parameterAlert events when values are out of range.
+ * Emits per-parameter status change events when status levels change.
  *
- * This sensor subscribes to the Water Digital Twin and reads its values.
- * Architecture: Water (Digital Twin) → publishes → WaterQualitySensor (subscribes)
+ * This sensor polls the Water Digital Twin at regular intervals (default: 3 seconds).
+ * PUB/SUB pattern is disabled to avoid continuous notifications.
+ * Architecture: WaterQualitySensor (polls) → Water Digital Twin (provides data)
  */
 export declare class WaterQualitySensorThing {
     private runtime;
@@ -16,17 +18,22 @@ export declare class WaterQualitySensorThing {
     private pH;
     private temperature;
     private oxygenLevel;
+    private pHStatus;
+    private temperatureStatus;
+    private oxygenLevelStatus;
     private samplingInterval;
     private samplingTimer;
+    private config;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription, samplingIntervalMs?: number);
     /**
-     * Start the thing and subscribe to Water Digital Twin
+     * Start the thing and connect to Water Digital Twin
      */
     startAsync(): Promise<void>;
     /**
-     * Subscribe to the Water Digital Twin to receive state updates
+     * Connect to the Water Digital Twin (polling mode)
      */
-    private subscribeToWaterDigitalTwin;
+    private connectToWaterDigitalTwin;
+    private scheduleConnectAndStartPolling;
     /**
      * Read initial state from Water Digital Twin
      */
@@ -35,7 +42,8 @@ export declare class WaterQualitySensorThing {
      * Check parameter values and emit alerts if necessary
      * Only emits the most critical alert to avoid concatenation issues
      */
-    private checkAndEmitAlerts;
+    private updateStatusesAndEmitEvents;
+    private updateParameterStatus;
     /**
      * Get the status of a parameter based on its value
      */
@@ -44,9 +52,9 @@ export declare class WaterQualitySensorThing {
      * Get current parameter status for external use
      */
     getStatus(): {
-        pH: "ok" | "warning" | "alert";
-        temperature: "ok" | "warning" | "alert";
-        oxygenLevel: "ok" | "warning" | "alert";
+        pH: ParameterStatus;
+        temperature: ParameterStatus;
+        oxygenLevel: ParameterStatus;
     };
     /**
      * Get current values for external use
@@ -65,6 +73,12 @@ export declare class WaterQualitySensorThing {
      * Start periodic sampling of water parameters
      */
     private startSampling;
+    private applyMode;
+    private loadConfigFromFile;
+    private saveConfigToFile;
+    private extractString;
+    private extractObject;
+    private validateConfigPayload;
     /**
      * Stop periodic sampling
      */

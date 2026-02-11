@@ -1,16 +1,16 @@
 import WoT from "wot-typescript-definitions";
-import { WaterState, WaterStateChangedEvent } from "../types/WaterTypes";
+import { WaterState } from "../types/WaterTypes";
 
 /**
  * WaterThing - Digital Twin representing the aquarium water state.
  *
  * This Thing acts as the source of truth for water parameters.
  * It exposes pH, temperature, and oxygenLevel as read/write properties.
- * Other Things (like WaterQualitySensor) subscribe to this Thing's events.
+ * Other Things (like WaterQualitySensor) read from this Thing's properties.
  *
  * Architecture:
- * - WaterThing (Digital Twin) ← publishes state changes
- * - WaterQualitySensor ← subscribes and reads from WaterThing
+ * - WaterThing (Digital Twin) ← publishes state via properties
+ * - WaterQualitySensor ← polls and reads from WaterThing
  * - FilterPump ← can affect water state (future: via ModbusMockServer)
  */
 
@@ -141,14 +141,7 @@ export class WaterThing {
     // Emit property change (for subscribers using observeproperty)
     this.thing.emitPropertyChange(property);
 
-    // Emit waterStateChanged event (for subscribers using subscribeevent)
-    const event: WaterStateChangedEvent = {
-      parameter: property,
-      oldValue,
-      newValue,
-      timestamp: new Date().toISOString(),
-    };
-    this.thing.emitEvent("waterStateChanged", event);
+    // PUB/SUB disabled: WaterThing publishes only via properties in this demo.
 
     return {
       success: true,
@@ -200,9 +193,9 @@ export class WaterThing {
       // Apply 0.2 to all parameters
       const baseChange = 0.2 * direction;
 
-      // Apply 0.2 extra to accelerated parameter
+      // Apply 0.4 extra to accelerated parameter
       const acceleratedParam = parametersMap[this.degradationConfig.acceleratedParameterIndex];
-      const acceleratedChange = 0.2 * direction;
+      const acceleratedChange = 0.4 * direction;
 
       for (let i = 0; i < parametersMap.length; i++) {
         const param = parametersMap[i];

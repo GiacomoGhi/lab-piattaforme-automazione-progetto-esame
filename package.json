@@ -2,16 +2,16 @@
   "name": "aquarium-monitor",
   "version": "1.0.0",
   "description": "Aquarium water quality monitoring system using WoT (HTTP + Modbus)",
-  "main": "./build/main.js",
+  "main": "./build/app.js",
   "scripts": {
-    "start": "node ./build/main",
+    "start": "node ./build/app",
     "build": "tsc",
     "mock": "npx ts-node src/mock/ModbusFilterPumpMockServer.ts",
     "dev:build": "tsc -w",
-    "dev:run": "nodemon build/main",
+    "dev:run": "nodemon build/app",
     "start:dev": "concurrently npm:dev:*",
     "test": "jest",
-    "start:build": "tsc && node ./build/main"
+    "start:build": "tsc && node ./build/app"
   },
   "author": "",
   "license": "MIT",

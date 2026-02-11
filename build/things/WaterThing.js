@@ -104,14 +104,7 @@ class WaterThing {
             console.log(`[Water DT] ✏️ ${property} updated: ${oldValue.toFixed(2)} → ${newValue.toFixed(2)}`);
             // Emit property change (for subscribers using observeproperty)
             this.thing.emitPropertyChange(property);
-            // Emit waterStateChanged event (for subscribers using subscribeevent)
-            const event = {
-                parameter: property,
-                oldValue,
-                newValue,
-                timestamp: new Date().toISOString(),
-            };
-            this.thing.emitEvent("waterStateChanged", event);
+            // PUB/SUB disabled: WaterThing publishes only via properties in this demo.
             return {
                 success: true,
                 newValue,
@@ -156,9 +149,9 @@ class WaterThing {
             const direction = isIncreasing ? 1 : -1;
             // Apply 0.2 to all parameters
             const baseChange = 0.2 * direction;
-            // Apply 0.2 extra to accelerated parameter
+            // Apply 0.4 extra to accelerated parameter
             const acceleratedParam = parametersMap[this.degradationConfig.acceleratedParameterIndex];
-            const acceleratedChange = 0.2 * direction;
+            const acceleratedChange = 0.4 * direction;
             for (let i = 0; i < parametersMap.length; i++) {
                 const param = parametersMap[i];
                 const extraChange = i === this.degradationConfig.acceleratedParameterIndex ? acceleratedChange : 0;

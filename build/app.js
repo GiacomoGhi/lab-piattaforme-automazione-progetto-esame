@@ -52,8 +52,6 @@ const WaterQualitySensorThing_1 = require("./things/WaterQualitySensorThing");
 const FilterPumpThing_1 = require("./things/FilterPumpThing");
 const WaterThing_1 = require("./things/WaterThing");
 const state = {
-    lastAlertTime: 0,
-    alertCooldown: 10000, // 10 seconds between alerts
     autoCleaningEnabled: true,
     lastDailyCleaningDate: "",
 };
@@ -75,7 +73,7 @@ function startStaticFileServer(port = 3000) {
             return;
         }
         // Route to index.html by default
-        let filePath = (req.url === "/" || !req.url) ? "/index.html" : req.url;
+        let filePath = req.url === "/" || !req.url ? "/index.html" : req.url;
         // Security: prevent directory traversal
         filePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, "");
         // Map URL to file system
@@ -83,7 +81,6 @@ function startStaticFileServer(port = 3000) {
         // Try to serve the file
         fs.readFile(fullPath, (err, data) => {
             if (err) {
-                // If file not found and it's not a special path, try index.html
                 if (filePath !== "/index.html" && !filePath.includes(".")) {
                     fs.readFile(path.join(process.cwd(), "index.html"), (err2, data2) => {
                         if (err2) {
@@ -120,122 +117,29 @@ function startStaticFileServer(port = 3000) {
         });
     });
     server.listen(port, () => {
-        console.log(`📡 Static file server listening on http://localhost:${port}`);
+        console.log(`Static file server listening on http://localhost:${port}`);
         console.log(`   Open: http://localhost:${port}\n`);
     });
 }
-/**
- * Start API server for configuration management
- */
-function startAPIServer(port = 3001) {
-    const { loadConfig } = require("./utils/configManager");
-    const server = http.createServer((req, res) => {
-        // Enable CORS
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-        if (req.method === "OPTIONS") {
-            res.writeHead(200);
-            res.end();
-            return;
+function computePumpSpeed(statuses) {
+    let warningCount = 0;
+    let alertCount = 0;
+    for (const status of Object.values(statuses)) {
+        if (status === "warning") {
+            warningCount += 1;
         }
-        // GET /api/config - Return current configuration
-        if (req.method === "GET" && req.url === "/api/config") {
-            try {
-                const config = loadConfig();
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify(config, null, 2));
-            }
-            catch (error) {
-                res.writeHead(500, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ error: error.message }));
-            }
-            return;
+        else if (status === "alert") {
+            alertCount += 1;
         }
-        // GET /api/mode - Return current mode
-        if (req.method === "GET" && req.url === "/api/mode") {
-            try {
-                const config = loadConfig();
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ mode: config.mode }));
-            }
-            catch (error) {
-                res.writeHead(500, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ error: error.message }));
-            }
-            return;
-        }
-        // POST /api/mode - Change mode (demo/production)
-        if (req.method === "POST" && req.url === "/api/mode") {
-            let body = "";
-            req.on("data", (chunk) => {
-                body += chunk.toString();
-            });
-            req.on("end", () => {
-                try {
-                    const data = JSON.parse(body);
-                    const newMode = data.mode;
-                    if (!newMode || (newMode !== "demo" && newMode !== "production")) {
-                        res.writeHead(400, { "Content-Type": "application/json" });
-                        res.end(JSON.stringify({ error: "Invalid mode. Must be 'demo' or 'production'" }));
-                        return;
-                    }
-                    // Load config and update mode
-                    const config = loadConfig();
-                    config.mode = newMode;
-                    // Save updated config back to file
-                    const configPath = path.join(__dirname, "../config.json");
-                    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-                    console.log(`🔄 Mode changed to: ${newMode}`);
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ mode: newMode, message: `Mode changed to ${newMode}` }));
-                }
-                catch (error) {
-                    res.writeHead(500, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ error: error.message }));
-                }
-            });
-            return;
-        }
-        // POST /api/config - Update configuration
-        if (req.method === "POST" && req.url === "/api/config") {
-            let body = "";
-            req.on("data", (chunk) => {
-                body += chunk.toString();
-            });
-            req.on("end", () => {
-                try {
-                    const newConfig = JSON.parse(body);
-                    // Save updated config to file
-                    const configPath = path.join(__dirname, "../config.json");
-                    fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
-                    console.log("📝 Configuration updated from API");
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ message: "Configuration saved successfully", config: newConfig }));
-                }
-                catch (error) {
-                    res.writeHead(500, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ error: error.message }));
-                }
-            });
-            return;
-        }
-        // Default 404
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Not Found" }));
-    });
-    server.listen(port, () => {
-        console.log(`📡 API server listening on http://localhost:${port}`);
-        console.log(`   GET http://localhost:${port}/api/config\n`);
-    });
+    }
+    const speed = warningCount * 15 + alertCount * 30;
+    return Math.min(100, Math.max(0, speed));
 }
 (function main() {
     return __awaiter(this, void 0, void 0, function* () {
-        console.log("🐠 Starting Aquarium Monitor System...\n");
+        console.log("Starting Aquarium Monitor System...\n");
         // Start static file server (serves index.html, www/*, etc.)
         startStaticFileServer(3000);
-        // Start API server (provides /api/config endpoint)
-        startAPIServer(3001);
         // Create servient with HTTP server and Modbus client
         const servient = new core_1.Servient();
         servient.addServer(new binding_http_1.HttpServer({ port: 8080 }));
@@ -250,19 +154,18 @@ function startAPIServer(port = 3001) {
         // Create Water Digital Twin (source of truth for water state)
         const water = new WaterThing_1.WaterThing(wotRuntime, waterTD);
         yield water.start();
-        console.log("✅ Water Digital Twin exposed (HTTP)\n");
-        // Create Water Quality Sensor (HTTP Thing) - subscribes to Water Digital Twin
-        // Using 3 second sampling interval for demo (configurable 3s to 30min)
-        const waterSensor = new WaterQualitySensorThing_1.WaterQualitySensorThing(wotRuntime, waterSensorTD, 3000);
+        console.log("OK: Water Digital Twin exposed (HTTP)\n");
+        // Create Water Quality Sensor (HTTP Thing)
+        const waterSensor = new WaterQualitySensorThing_1.WaterQualitySensorThing(wotRuntime, waterSensorTD);
         yield waterSensor.startAsync();
-        console.log("✅ Water Quality Sensor exposed (HTTP)\n");
-        // Create Filter Pump (Modbus Proxy Thing) - pass water reference for correction logic
+        console.log("OK: Water Quality Sensor exposed (HTTP)\n");
+        // Create Filter Pump (Modbus Proxy Thing)
         const filterPump = new FilterPumpThing_1.FilterPumpThing(wotRuntime, filterPumpProxyTD, filterPumpModbusTD, water);
         yield filterPump.start();
-        console.log("✅ Filter Pump exposed (HTTP Proxy → Modbus)\n");
+        console.log("OK: Filter Pump exposed (HTTP Proxy -> Modbus)\n");
         // Start initial water degradation simulation (pump starts off)
         water.startDegradationSimulation();
-        console.log("🌊 Water degradation simulation started\n");
+        console.log("Water degradation simulation started\n");
         // Create HTTP client to consume things for orchestration
         const clientServient = new core_1.Servient();
         clientServient.addClientFactory(new binding_http_1.HttpClientFactory(null));
@@ -274,49 +177,71 @@ function startAPIServer(port = 3001) {
         const consumedSensor = yield clientRuntime.consume(sensorTD);
         const pumpTD = yield clientRuntime.requestThingDescription("http://localhost:8080/filterpump");
         const consumedPump = yield clientRuntime.consume(pumpTD);
-        console.log("🔗 Things consumed, starting orchestration...\n");
+        console.log("Things consumed, starting orchestration...\n");
         // ====== ORCHESTRATION LOGIC ======
-        // Subscribe to water quality alerts
-        consumedSensor.subscribeEvent("parameterAlert", (data) => __awaiter(this, void 0, void 0, function* () {
-            const alert = yield data.value();
-            const now = Date.now();
-            console.log(`\n🚨 Parameter Alert received: ${JSON.stringify(alert)}`);
-            // Check cooldown
-            if (now - state.lastAlertTime < state.alertCooldown) {
-                console.log("⏳ Alert cooldown active, skipping action");
-                return;
-            }
-            state.lastAlertTime = now;
-            // Get current pump speed
-            const currentSpeed = yield consumedPump.readProperty("pumpSpeed");
-            const speedValue = yield currentSpeed.value();
-            const speed = Number(speedValue);
-            // Pump speed based on alert level:
-            // - warning (yellow): 15% pump speed
-            // - alert (red): 40% pump speed
-            if (alert.status === "warning") {
-                // Warning level (yellow) - activate pump at 15%
-                console.log(`⚠️ WARNING (${alert.parameter}): Setting pump speed to 15%`);
-                yield consumedPump.invokeAction("setPumpSpeed", 15);
-            }
-            else if (alert.status === "alert") {
-                // Critical level (red) - activate pump at 40%
-                console.log(`🚨 CRITICAL (${alert.parameter}): Setting pump speed to 40%`);
-                yield consumedPump.invokeAction("setPumpSpeed", 40);
-            }
+        const statuses = {
+            pH: "ok",
+            temperature: "ok",
+            oxygenLevel: "ok",
+        };
+        let lastSpeed = -1;
+        function syncPumpSpeed() {
+            return __awaiter(this, void 0, void 0, function* () {
+                const targetSpeed = computePumpSpeed(statuses);
+                if (targetSpeed === lastSpeed)
+                    return;
+                lastSpeed = targetSpeed;
+                if (targetSpeed === 0) {
+                    console.log("All parameters OK. Turning pump off.");
+                }
+                else {
+                    console.log(`Adjusting pump speed to ${targetSpeed}% based on alerts.`);
+                }
+                yield consumedPump.invokeAction("setPumpSpeed", targetSpeed);
+            });
+        }
+        // Load initial statuses (if available)
+        try {
+            const pHStatusProp = yield consumedSensor.readProperty("pHStatus");
+            const tempStatusProp = yield consumedSensor.readProperty("temperatureStatus");
+            const o2StatusProp = yield consumedSensor.readProperty("oxygenLevelStatus");
+            statuses.pH = (yield pHStatusProp.value());
+            statuses.temperature = (yield tempStatusProp.value());
+            statuses.oxygenLevel = (yield o2StatusProp.value());
+            yield syncPumpSpeed();
+        }
+        catch (error) {
+            console.warn("[Orchestrator] Unable to read initial statuses:", error);
+        }
+        // Subscribe to water quality status changes
+        function handleStatusEvent(parameter, data) {
+            return __awaiter(this, void 0, void 0, function* () {
+                const event = (yield data.value());
+                const targetParam = event.parameter || parameter;
+                console.log(`[Orchestrator] Status change: ${targetParam} => ${event.status} (${event.value.toFixed(2)})`);
+                statuses[targetParam] = event.status;
+                yield syncPumpSpeed();
+            });
+        }
+        consumedSensor.subscribeEvent("pHStatusChanged", (data) => __awaiter(this, void 0, void 0, function* () {
+            yield handleStatusEvent("pH", data);
+        }));
+        consumedSensor.subscribeEvent("temperatureStatusChanged", (data) => __awaiter(this, void 0, void 0, function* () {
+            yield handleStatusEvent("temperature", data);
+        }));
+        consumedSensor.subscribeEvent("oxygenLevelStatusChanged", (data) => __awaiter(this, void 0, void 0, function* () {
+            yield handleStatusEvent("oxygenLevel", data);
         }));
         // Daily automatic cleaning cycle check
         if (state.autoCleaningEnabled) {
             setInterval(() => __awaiter(this, void 0, void 0, function* () {
                 const today = new Date().toDateString();
-                // Check if we've already done daily cleaning today
                 if (state.lastDailyCleaningDate !== today) {
                     try {
                         const healthProp = yield consumedPump.readProperty("filterHealth");
                         const health = Number(yield healthProp.value());
-                        // Trigger daily cleaning if health is below 50% OR it's a new day
                         if (health < 50) {
-                            console.log(`\n🧹 Daily cleaning cycle - Filter health: ${health}%`);
+                            console.log(`\nDaily cleaning cycle - Filter health: ${health}%`);
                             yield consumedPump.invokeAction("cleaningCycle");
                             state.lastDailyCleaningDate = today;
                         }
@@ -325,7 +250,7 @@ function startAPIServer(port = 3001) {
                         console.error("Error during daily cleaning check:", error);
                     }
                 }
-            }), 30000); // Check every 30 seconds
+            }), 30000);
         }
         // Periodic status logging
         setInterval(() => __awaiter(this, void 0, void 0, function* () {
@@ -339,10 +264,10 @@ function startAPIServer(port = 3001) {
                 const health = yield filterHealthProp.value();
                 const filterStatusProp = yield consumedPump.readProperty("filterStatus");
                 const status = yield filterStatusProp.value();
-                console.log("\n📊 === AQUARIUM STATUS ===");
-                console.log(`   pH: ${(_a = params.pH) === null || _a === void 0 ? void 0 : _a.toFixed(2)}`);
-                console.log(`   Temperature: ${(_b = params.temperature) === null || _b === void 0 ? void 0 : _b.toFixed(1)}°C`);
-                console.log(`   Oxygen: ${(_c = params.oxygenLevel) === null || _c === void 0 ? void 0 : _c.toFixed(1)} mg/L`);
+                console.log("\n=== AQUARIUM STATUS ===");
+                console.log(`   pH: ${(_a = params.pH) === null || _a === void 0 ? void 0 : _a.toFixed(2)} (${statuses.pH})`);
+                console.log(`   Temperature: ${(_b = params.temperature) === null || _b === void 0 ? void 0 : _b.toFixed(1)}°C (${statuses.temperature})`);
+                console.log(`   Oxygen: ${(_c = params.oxygenLevel) === null || _c === void 0 ? void 0 : _c.toFixed(1)} mg/L (${statuses.oxygenLevel})`);
                 console.log(`   Pump Speed: ${speed}% (${status})`);
                 console.log(`   Filter Health: ${health}%`);
                 console.log("========================\n");
@@ -350,13 +275,13 @@ function startAPIServer(port = 3001) {
             catch (error) {
                 console.error("Error reading status:", error);
             }
-        }), 10000); // Log every 10 seconds
-        console.log("🎮 Aquarium Monitor running. Press Ctrl+C to stop.");
-        console.log("⚠️  Make sure the Modbus mock server is running!");
-        console.log("    Run: npx ts-node src/mock/ModbusFilterPumpMockServer.ts\n");
+        }), 12000);
+        console.log("Aquarium Monitor running. Press Ctrl+C to stop.");
+        console.log("Make sure the Modbus mock server is running!");
+        console.log("Run: npx ts-node src/mock/ModbusFilterPumpMockServer.ts\n");
         // Handle graceful shutdown
         process.on("SIGINT", () => {
-            console.log("\n\n🛑 Shutting down...");
+            console.log("\n\nShutting down...");
             water.stop();
             waterSensor.stop();
             filterPump.stop();

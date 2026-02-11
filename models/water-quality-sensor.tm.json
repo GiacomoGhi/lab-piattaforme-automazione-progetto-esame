@@ -10,6 +10,12 @@
     ],
     "title": "WaterQualitySensor",
     "description": "Aquarium water quality sensor monitoring pH, temperature and oxygen levels",
+    "securityDefinitions": {
+        "nosec": {
+            "scheme": "nosec"
+        }
+    },
+    "security": "nosec",
     "properties": {
         "pH": {
             "type": "number",
@@ -36,6 +42,39 @@
             "observable": true,
             "readOnly": true
         },
+        "pHStatus": {
+            "type": "string",
+            "description": "Status level for pH",
+            "enum": [
+                "ok",
+                "warning",
+                "alert"
+            ],
+            "observable": true,
+            "readOnly": true
+        },
+        "temperatureStatus": {
+            "type": "string",
+            "description": "Status level for temperature",
+            "enum": [
+                "ok",
+                "warning",
+                "alert"
+            ],
+            "observable": true,
+            "readOnly": true
+        },
+        "oxygenLevelStatus": {
+            "type": "string",
+            "description": "Status level for oxygen",
+            "enum": [
+                "ok",
+                "warning",
+                "alert"
+            ],
+            "observable": true,
+            "readOnly": true
+        },
         "allParameters": {
             "type": "object",
             "description": "All water quality parameters",
@@ -55,20 +94,130 @@
             },
             "observable": true,
             "readOnly": true
+        },
+        "mode": {
+            "type": "string",
+            "description": "Sampling mode",
+            "enum": [
+                "demo",
+                "production"
+            ],
+            "observable": true,
+            "readOnly": false
+        },
+        "samplingIntervalMs": {
+            "type": "number",
+            "description": "Current sampling interval in milliseconds",
+            "observable": true,
+            "readOnly": true
+        },
+        "config": {
+            "type": "object",
+            "description": "Sensor configuration including ranges and mode",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "demo",
+                        "production"
+                    ]
+                },
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pH": {
+                            "type": "object",
+                            "properties": {
+                                "unit": { "type": "string" },
+                                "description": { "type": "string" },
+                                "configurable": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                },
+                                "optimal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                }
+                            },
+                            "required": ["unit", "description", "configurable", "optimal"]
+                        },
+                        "temperature": {
+                            "type": "object",
+                            "properties": {
+                                "unit": { "type": "string" },
+                                "description": { "type": "string" },
+                                "configurable": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                },
+                                "optimal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                }
+                            },
+                            "required": ["unit", "description", "configurable", "optimal"]
+                        },
+                        "oxygenLevel": {
+                            "type": "object",
+                            "properties": {
+                                "unit": { "type": "string" },
+                                "description": { "type": "string" },
+                                "configurable": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                },
+                                "optimal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "min": { "type": "number" },
+                                        "max": { "type": "number" }
+                                    },
+                                    "required": ["min", "max"]
+                                }
+                            },
+                            "required": ["unit", "description", "configurable", "optimal"]
+                        }
+                    },
+                    "required": ["pH", "temperature", "oxygenLevel"]
+                },
+                "modes": {
+                    "type": "object"
+                }
+            },
+            "required": ["mode", "parameters"],
+            "observable": true,
+            "readOnly": false
         }
     },
     "actions": {},
     "events": {
-        "parameterAlert": {
-            "description": "Alert when a parameter is out of optimal range",
+        "pHStatusChanged": {
+            "description": "Emitted when pH status changes",
             "data": {
                 "type": "object",
                 "properties": {
                     "parameter": {
                         "type": "string"
-                    },
-                    "value": {
-                        "type": "number"
                     },
                     "status": {
                         "type": "string",
@@ -78,10 +227,69 @@
                             "alert"
                         ]
                     },
-                    "message": {
+                    "value": {
+                        "type": "number"
+                    },
+                    "timestamp": {
                         "type": "string"
                     }
                 }
+            }
+        },
+        "temperatureStatusChanged": {
+            "description": "Emitted when temperature status changes",
+            "data": {
+                "type": "object",
+                "properties": {
+                    "parameter": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "ok",
+                            "warning",
+                            "alert"
+                        ]
+                    },
+                    "value": {
+                        "type": "number"
+                    },
+                    "timestamp": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "oxygenLevelStatusChanged": {
+            "description": "Emitted when oxygen level status changes",
+            "data": {
+                "type": "object",
+                "properties": {
+                    "parameter": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "ok",
+                            "warning",
+                            "alert"
+                        ]
+                    },
+                    "value": {
+                        "type": "number"
+                    },
+                    "timestamp": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "configChanged": {
+            "description": "Emitted when configuration is updated",
+            "data": {
+                "type": "object"
             }
         }
     }
