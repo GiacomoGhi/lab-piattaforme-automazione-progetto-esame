@@ -21,10 +21,14 @@
     "@node-wot/binding-modbus": "^0.9.1",
     "@node-wot/core": "^0.8.12",
     "@types/node": "^20.3.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "modbus-serial": "^8.0.17",
     "ts-node": "^10.9.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "concurrently": "^9.2.1",
     "typescript": "^5.9.3"
   }

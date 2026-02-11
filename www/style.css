@@ -278,6 +278,18 @@ header h1 {
   color: #00c853;
 }
 
+.health-value.health-good {
+  color: #00c853;
+}
+
+.health-value.health-warning {
+  color: #ffc107;
+}
+
+.health-value.health-critical {
+  color: #ff4444;
+}
+
 /* Buttons */
 .btn {
   padding: 10px 20px;
@@ -544,8 +556,27 @@ header h1 {
   background: rgba(0, 217, 255, 0.05);
 }
 
+.config-limits {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.save-config-container {
+  grid-column: 1 / -1;
+  margin-top: 20px;
+}
+
 /* Save button styling */
 #save-config-btn {
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #00d9ff, #0066cc);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
   transition: all 0.3s ease;
 }
 

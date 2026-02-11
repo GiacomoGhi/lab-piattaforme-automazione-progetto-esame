@@ -1,11 +1,23 @@
 import WoT from "wot-typescript-definitions";
-import { WaterState } from "../types/WaterTypes";
+/**
+ * WaterThing - Digital Twin representing the aquarium water state.
+ *
+ * This Thing acts as the source of truth for water parameters.
+ * It exposes pH, temperature, and oxygenLevel as read/write properties.
+ * Other Things (like WaterQualitySensor) read from this Thing's properties.
+ *
+ * Architecture:
+ * - WaterThing (Digital Twin) ← publishes state via properties
+ * - WaterQualitySensor ← polls and reads from WaterThing
+ * - FilterPump ← can affect water state (future: via ModbusMockServer)
+ */
 export declare class WaterThing {
     private runtime;
     private td;
     private thing;
     private state;
-    private degradationConfig;
+    private currentTestCycle;
+    private acceleratedParameterIndex;
     private degradationInterval;
     private cycleRotationInterval;
     private simulationActive;
@@ -15,6 +27,8 @@ export declare class WaterThing {
     private pumpReachable;
     private pumpRetryDelayMs;
     private pumpNextRetryAt;
+    private consumedSensor;
+    private optimalTargets;
     constructor(runtime: typeof WoT, td: WoT.ThingDescription);
     /**
      * Start the Water Digital Twin
@@ -29,14 +43,6 @@ export declare class WaterThing {
      */
     private updateProperty;
     /**
-     * Get current state (for external use)
-     */
-    getState(): WaterState;
-    /**
-     * Programmatically update state (for use by other components like mock server)
-     */
-    setState(updates: Partial<WaterState>): Promise<void>;
-    /**
      * Start degradation simulation (runs continuously)
      */
     private startDegradationSimulation;
@@ -44,16 +50,21 @@ export declare class WaterThing {
      * Stop degradation simulation (used on shutdown)
      */
     private stopDegradationSimulation;
+    /**
+     * Connect to the WaterQualitySensor to obtain optimal targets via WoT.
+     * Subscribes to configChanged events to keep targets in sync.
+     */
+    private scheduleConnectToSensor;
+    private connectToSensor;
+    /**
+     * Read the config property from the consumed Sensor and extract optimal targets.
+     */
+    private refreshOptimalTargets;
     private scheduleConnectToPump;
     private connectToPump;
     private canAttemptPumpRead;
     private startCorrectionLoop;
     private applyWaterCorrections;
-    private loadOptimalTargetsFromConfig;
-    /**
-     * Check if all parameters are within optimal range
-     */
-    allParametersOptimal(): boolean;
     /**
      * Stop everything on shutdown
      */

@@ -41,99 +41,33 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const http = __importStar(require("http"));
+const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
 const core_1 = require("@node-wot/core");
 const binding_http_1 = require("@node-wot/binding-http");
 const binding_modbus_1 = require("@node-wot/binding-modbus");
 const WaterQualitySensorThing_1 = require("./things/WaterQualitySensorThing");
 const FilterPumpThing_1 = require("./things/FilterPumpThing");
 const WaterThing_1 = require("./things/WaterThing");
-const state = {
-    autoCleaningEnabled: true,
-    lastDailyCleaningDate: "",
-};
-function getTDFromFile(filePath) {
-    return JSON.parse(fs.readFileSync(filePath).toString());
-}
+// ====================================
+// AQUARIUM MONITOR - ORCHESTRATOR
+// ====================================
 /**
  * Serve static files (index.html, www/*, etc.)
  */
 function startStaticFileServer(port = 3000) {
-    const server = http.createServer((req, res) => {
-        // Enable CORS
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-        if (req.method === "OPTIONS") {
-            res.writeHead(200);
-            res.end();
-            return;
-        }
-        // Route to index.html by default
-        let filePath = req.url === "/" || !req.url ? "/index.html" : req.url;
-        // Security: prevent directory traversal
-        filePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, "");
-        // Map URL to file system
-        const fullPath = path.join(process.cwd(), filePath);
-        // Try to serve the file
-        fs.readFile(fullPath, (err, data) => {
-            if (err) {
-                if (filePath !== "/index.html" && !filePath.includes(".")) {
-                    fs.readFile(path.join(process.cwd(), "index.html"), (err2, data2) => {
-                        if (err2) {
-                            res.writeHead(404, { "Content-Type": "text/plain" });
-                            res.end("404 Not Found");
-                        }
-                        else {
-                            res.writeHead(200, { "Content-Type": "text/html" });
-                            res.end(data2);
-                        }
-                    });
-                }
-                else {
-                    res.writeHead(404, { "Content-Type": "text/plain" });
-                    res.end("404 Not Found");
-                }
-                return;
-            }
-            // Determine content type
-            const ext = path.extname(fullPath).toLowerCase();
-            const contentTypes = {
-                ".html": "text/html",
-                ".js": "application/javascript",
-                ".css": "text/css",
-                ".json": "application/json",
-                ".png": "image/png",
-                ".jpg": "image/jpeg",
-                ".gif": "image/gif",
-                ".svg": "image/svg+xml",
-            };
-            const contentType = contentTypes[ext] || "application/octet-stream";
-            res.writeHead(200, { "Content-Type": contentType });
-            res.end(data);
-        });
-    });
-    server.listen(port, () => {
+    const app = (0, express_1.default)();
+    app.use((0, cors_1.default)());
+    app.use(express_1.default.static("www"));
+    app.listen(port, () => {
         console.log(`Static file server listening on http://localhost:${port}`);
         console.log(`   Open: http://localhost:${port}\n`);
     });
-}
-function computePumpSpeed(statuses) {
-    let warningCount = 0;
-    let alertCount = 0;
-    for (const status of Object.values(statuses)) {
-        if (status === "warning") {
-            warningCount += 1;
-        }
-        else if (status === "alert") {
-            alertCount += 1;
-        }
-    }
-    const speed = warningCount * 20 + alertCount * 40;
-    return Math.min(100, Math.max(0, speed));
 }
 (function main() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -147,10 +81,10 @@ function computePumpSpeed(statuses) {
         servient.addClientFactory(new binding_http_1.HttpClientFactory(null));
         const wotRuntime = yield servient.start();
         // Read TDs from files
-        const waterTD = getTDFromFile("./models/water.tm.json");
-        const waterSensorTD = getTDFromFile("./models/water-quality-sensor.tm.json");
-        const filterPumpProxyTD = getTDFromFile("./models/filter-pump.tm.json");
-        const filterPumpModbusTD = getTDFromFile("./models/filter-pump-modbus.td.json");
+        const waterTD = JSON.parse(fs.readFileSync("./models/water.tm.json").toString());
+        const waterSensorTD = JSON.parse(fs.readFileSync("./models/water-quality-sensor.tm.json").toString());
+        const filterPumpProxyTD = JSON.parse(fs.readFileSync("./models/filter-pump.tm.json").toString());
+        const filterPumpModbusTD = JSON.parse(fs.readFileSync("./models/filter-pump-modbus.td.json").toString());
         // Create Water Digital Twin (source of truth for water state)
         const water = new WaterThing_1.WaterThing(wotRuntime, waterTD);
         yield water.start();
@@ -163,7 +97,6 @@ function computePumpSpeed(statuses) {
         const filterPump = new FilterPumpThing_1.FilterPumpThing(wotRuntime, filterPumpProxyTD, filterPumpModbusTD);
         yield filterPump.start();
         console.log("OK: Filter Pump exposed (HTTP Proxy -> Modbus)\n");
-        // Water degradation simulation is managed internally by WaterThing
         // Create HTTP client to consume things for orchestration
         const clientServient = new core_1.Servient();
         clientServient.addClientFactory(new binding_http_1.HttpClientFactory(null));
@@ -183,9 +116,25 @@ function computePumpSpeed(statuses) {
             oxygenLevel: "ok",
         };
         let lastSpeed = -1;
+        /**
+         * Synchronizes pump speed based on current water parameter statuses.
+         * Calculates target speed proportional to number of warnings (20% each) and alerts (40% each).
+         * If target speed differs from previous value, sends command to pump via WoT action.
+         */
         function syncPumpSpeed() {
             return __awaiter(this, void 0, void 0, function* () {
-                const targetSpeed = computePumpSpeed(statuses);
+                // Calcola velocità target in base agli status correnti
+                let warningCount = 0;
+                let alertCount = 0;
+                for (const status of Object.values(statuses)) {
+                    if (status === "warning") {
+                        warningCount += 1;
+                    }
+                    else if (status === "alert") {
+                        alertCount += 1;
+                    }
+                }
+                const targetSpeed = Math.min(100, Math.max(0, warningCount * 20 + alertCount * 40));
                 if (targetSpeed === lastSpeed)
                     return;
                 lastSpeed = targetSpeed;
@@ -203,6 +152,16 @@ function computePumpSpeed(statuses) {
                 }
             });
         }
+        // Subscribe to water quality status changes
+        function handleStatusEvent(parameter, data) {
+            return __awaiter(this, void 0, void 0, function* () {
+                const event = (yield data.value());
+                const targetParam = event.parameter || parameter;
+                console.log(`[Orchestrator] Status change: ${targetParam} => ${event.status} (${event.value.toFixed(2)})`);
+                statuses[targetParam] = event.status;
+                yield syncPumpSpeed();
+            });
+        }
         // Load initial statuses (if available)
         try {
             const pHStatusProp = yield consumedSensor.readProperty("pHStatus");
@@ -216,16 +175,6 @@ function computePumpSpeed(statuses) {
         catch (error) {
             console.warn("[Orchestrator] Unable to read initial statuses:", error);
         }
-        // Subscribe to water quality status changes
-        function handleStatusEvent(parameter, data) {
-            return __awaiter(this, void 0, void 0, function* () {
-                const event = (yield data.value());
-                const targetParam = event.parameter || parameter;
-                console.log(`[Orchestrator] Status change: ${targetParam} => ${event.status} (${event.value.toFixed(2)})`);
-                statuses[targetParam] = event.status;
-                yield syncPumpSpeed();
-            });
-        }
         consumedSensor.subscribeEvent("pHStatusChanged", (data) => __awaiter(this, void 0, void 0, function* () {
             yield handleStatusEvent("pH", data);
         }));
@@ -236,25 +185,24 @@ function computePumpSpeed(statuses) {
             yield handleStatusEvent("oxygenLevel", data);
         }));
         // Daily automatic cleaning cycle check
-        if (state.autoCleaningEnabled) {
-            setInterval(() => __awaiter(this, void 0, void 0, function* () {
-                const today = new Date().toDateString();
-                if (state.lastDailyCleaningDate !== today) {
-                    try {
-                        const healthProp = yield consumedPump.readProperty("filterHealth");
-                        const health = Number(yield healthProp.value());
-                        if (health < 50) {
-                            console.log(`\nDaily cleaning cycle - Filter health: ${health}%`);
-                            yield consumedPump.invokeAction("cleaningCycle");
-                            state.lastDailyCleaningDate = today;
-                        }
-                    }
-                    catch (error) {
-                        console.error("Error during daily cleaning check:", error);
+        let lastDailyCleaningDate = "";
+        setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            const today = new Date().toDateString();
+            if (lastDailyCleaningDate !== today) {
+                try {
+                    const healthProp = yield consumedPump.readProperty("filterHealth");
+                    const health = Number(yield healthProp.value());
+                    if (health < 50) {
+                        console.log(`\nDaily cleaning cycle - Filter health: ${health}%`);
+                        yield consumedPump.invokeAction("cleaningCycle");
+                        lastDailyCleaningDate = today;
                     }
                 }
-            }), 30000);
-        }
+                catch (error) {
+                    console.error("Error during daily cleaning check:", error);
+                }
+            }
+        }), 30000);
         // Periodic status logging
         setInterval(() => __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;

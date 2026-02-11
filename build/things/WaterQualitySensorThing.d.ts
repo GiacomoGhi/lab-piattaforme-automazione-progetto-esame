@@ -1,5 +1,4 @@
 import WoT from "wot-typescript-definitions";
-import { ParameterStatus } from "../types/WaterTypes";
 /**
  * WaterQualitySensorThing - Monitors aquarium water quality.
  *
@@ -48,22 +47,6 @@ export declare class WaterQualitySensorThing {
      * Get the status of a parameter based on its value
      */
     private getParameterStatus;
-    /**
-     * Get current parameter status for external use
-     */
-    getStatus(): {
-        pH: ParameterStatus;
-        temperature: ParameterStatus;
-        oxygenLevel: ParameterStatus;
-    };
-    /**
-     * Get current values for external use
-     */
-    getValues(): {
-        pH: number;
-        temperature: number;
-        oxygenLevel: number;
-    };
     /**
      * Set sampling interval (in milliseconds)
      * Valid range: 3000 (3 sec) to 1800000 (30 min)

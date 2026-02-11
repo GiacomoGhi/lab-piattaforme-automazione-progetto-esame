@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import WoT from "wot-typescript-definitions";
 import { WaterState } from "../types/WaterTypes";
 
@@ -16,23 +14,6 @@ import { WaterState } from "../types/WaterTypes";
  * - FilterPump ← can affect water state (future: via ModbusMockServer)
  */
 
-interface DegradationConfig {
-  currentTestCycle: number; // 0 = increase, 1 = decrease
-  acceleratedParameterIndex: number; // 0=pH, 1=temperature, 2=oxygenLevel
-}
-
-interface WaterTargets {
-  pH: number;
-  temperature: number;
-  oxygenLevel: number;
-}
-
-const OPTIMAL_VALUES = {
-  pH: 7.0,
-  temperature: 25.0,
-  oxygenLevel: 7.0,
-};
-
 export class WaterThing {
   private runtime: typeof WoT;
   private td: WoT.ThingDescription;
@@ -46,10 +27,8 @@ export class WaterThing {
   };
 
   // Simulation state
-  private degradationConfig: DegradationConfig = {
-    currentTestCycle: 0, // 0 = increase, 1 = decrease
-    acceleratedParameterIndex: 0, // 0=pH, 1=temperature, 2=oxygenLevel
-  };
+  private currentTestCycle: number = 0; // 0 = increase, 1 = decrease
+  private acceleratedParameterIndex: number = 0; // 0=pH, 1=temperature, 2=oxygenLevel
   private degradationInterval: NodeJS.Timeout | null = null;
   private cycleRotationInterval: NodeJS.Timeout | null = null;
   private simulationActive: boolean = false;
@@ -59,6 +38,10 @@ export class WaterThing {
   private pumpReachable: boolean = false;
   private pumpRetryDelayMs: number = 1000;
   private pumpNextRetryAt: number = 0;
+
+  // Optimal targets obtained from Sensor via WoT
+  private consumedSensor: WoT.ConsumedThing | null = null;
+  private optimalTargets: WaterState = { pH: 7.0, temperature: 25.0, oxygenLevel: 7.0 };
 
   constructor(runtime: typeof WoT, td: WoT.ThingDescription) {
     this.runtime = runtime;
@@ -117,6 +100,7 @@ export class WaterThing {
     this.startDegradationSimulation();
     console.log("Water degradation simulation started");
     this.scheduleConnectToPump(2000);
+    this.scheduleConnectToSensor(2000);
     this.startCorrectionLoop();
   }
 
@@ -136,7 +120,7 @@ export class WaterThing {
   private async updateProperty(
     property: keyof WaterState,
     newValue: number,
-  ): Promise<{ success: boolean; newValue: number; message: string }> {
+  ): Promise<void> {
     const oldValue = this.state[property];
 
     // Validate and clamp values
@@ -158,34 +142,7 @@ export class WaterThing {
       `[Water DT] ✏️ ${property} updated: ${oldValue.toFixed(2)} → ${newValue.toFixed(2)}`,
     );
 
-    // Emit property change (for subscribers using observeproperty)
     this.thing.emitPropertyChange(property);
-
-    // PUB/SUB disabled: WaterThing publishes only via properties in this demo.
-
-    return {
-      success: true,
-      newValue,
-      message: `${property} set to ${newValue}`,
-    };
-  }
-
-  /**
-   * Get current state (for external use)
-   */
-  public getState(): WaterState {
-    return { ...this.state };
-  }
-
-  /**
-   * Programmatically update state (for use by other components like mock server)
-   */
-  public async setState(updates: Partial<WaterState>): Promise<void> {
-    for (const [key, value] of Object.entries(updates)) {
-      if (value !== undefined) {
-        await this.updateProperty(key as keyof WaterState, value);
-      }
-    }
   }
 
   /**
@@ -198,7 +155,7 @@ export class WaterThing {
     }
 
     this.simulationActive = true;
-    console.log(`[Water DT] 🌊 Starting degradation simulation (Cycle ${this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"})`);
+    console.log(`[Water DT] 🌊 Starting degradation simulation (Cycle ${this.currentTestCycle === 0 ? "UP" : "DOWN"})`);
 
     if (this.degradationInterval) {
       clearInterval(this.degradationInterval);
@@ -210,19 +167,19 @@ export class WaterThing {
     const parametersMap: (keyof WaterState)[] = ["pH", "temperature", "oxygenLevel"];
 
     this.degradationInterval = setInterval(async () => {
-      const isIncreasing = this.degradationConfig.currentTestCycle === 0;
+      const isIncreasing = this.currentTestCycle === 0;
       const direction = isIncreasing ? 1 : -1;
 
       // Apply 0.2 to all parameters
       const baseChange = 0.2 * direction;
 
       // Apply 0.4 extra to accelerated parameter
-      const acceleratedParam = parametersMap[this.degradationConfig.acceleratedParameterIndex];
+      const acceleratedParam = parametersMap[this.acceleratedParameterIndex];
       const acceleratedChange = 0.4 * direction;
 
       for (let i = 0; i < parametersMap.length; i++) {
         const param = parametersMap[i];
-        const extraChange = i === this.degradationConfig.acceleratedParameterIndex ? acceleratedChange : 0;
+        const extraChange = i === this.acceleratedParameterIndex ? acceleratedChange : 0;
         const totalChange = baseChange + extraChange;
 
         let newValue = this.state[param] + totalChange;
@@ -252,17 +209,17 @@ export class WaterThing {
     this.cycleRotationInterval = setInterval(() => {
       if (!this.simulationActive) return;
 
-      this.degradationConfig.currentTestCycle =
-        this.degradationConfig.currentTestCycle === 0 ? 1 : 0;
-      this.degradationConfig.acceleratedParameterIndex =
-        (this.degradationConfig.acceleratedParameterIndex + 1) % 3;
+      this.currentTestCycle =
+        this.currentTestCycle === 0 ? 1 : 0;
+      this.acceleratedParameterIndex =
+        (this.acceleratedParameterIndex + 1) % 3;
 
       console.log(
         `[Water DT] 🔁 Cycle switched to ${
-          this.degradationConfig.currentTestCycle === 0 ? "UP" : "DOWN"
+          this.currentTestCycle === 0 ? "UP" : "DOWN"
         }, Accelerated param: ${
           ["pH", "temperature", "oxygenLevel"][
-            this.degradationConfig.acceleratedParameterIndex
+            this.acceleratedParameterIndex
           ]
         }`,
       );
@@ -286,6 +243,68 @@ export class WaterThing {
     }
 
     console.log("[Water DT] ⏹️ Degradation simulation stopped");
+  }
+
+  /**
+   * Connect to the WaterQualitySensor to obtain optimal targets via WoT.
+   * Subscribes to configChanged events to keep targets in sync.
+   */
+  private scheduleConnectToSensor(delayMs: number): void {
+    setTimeout(async () => {
+      const connected = await this.connectToSensor();
+      if (!connected) {
+        console.log("[Water DT] Will retry sensor connection in 5 seconds...");
+        this.scheduleConnectToSensor(5000);
+      }
+    }, delayMs);
+  }
+
+  private async connectToSensor(): Promise<boolean> {
+    try {
+      const sensorTD = await this.runtime.requestThingDescription(
+        "http://localhost:8080/waterqualitysensor",
+      );
+      this.consumedSensor = await this.runtime.consume(sensorTD);
+
+      // Read initial config
+      await this.refreshOptimalTargets();
+
+      // Subscribe to config changes so targets stay in sync
+      this.consumedSensor.subscribeEvent("configChanged", async () => {
+        await this.refreshOptimalTargets();
+      });
+
+      console.log("[Water DT] Connected to Sensor – optimal targets loaded via WoT");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Read the config property from the consumed Sensor and extract optimal targets.
+   */
+  private async refreshOptimalTargets(): Promise<void> {
+    if (!this.consumedSensor) return;
+    try {
+      const configProp = await this.consumedSensor.readProperty("config");
+      const config = (await configProp.value()) as any;
+      if (!config?.parameters) return;
+
+      for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
+        const paramConfig = config.parameters[key];
+        if (paramConfig?.optimal) {
+          const min = Number(paramConfig.optimal.min);
+          const max = Number(paramConfig.optimal.max);
+          if (!Number.isNaN(min) && !Number.isNaN(max)) {
+            this.optimalTargets[key] = (min + max) / 2;
+          }
+        }
+      }
+      console.log("[Water DT] Optimal targets updated:", this.optimalTargets);
+    } catch (error) {
+      console.warn("[Water DT] Failed to refresh optimal targets, keeping cached values.");
+    }
   }
 
   private scheduleConnectToPump(delayMs: number): void {
@@ -354,100 +373,26 @@ export class WaterThing {
 
       if (pumpSpeed <= 0) return;
 
-      const targets = this.loadOptimalTargetsFromConfig();
       const speedFactor = Math.max(0, Math.min(1, pumpSpeed / 100));
       const maxStep = 2.2 * speedFactor;
 
-      await this.applyWaterCorrections(targets, maxStep);
+      await this.applyWaterCorrections(this.optimalTargets, maxStep);
     }, 1000);
   }
 
   private async applyWaterCorrections(
-    targets: WaterTargets,
+    targets: WaterState,
     maxStep: number,
   ): Promise<void> {
-    const updates: Partial<WaterTargets> = {};
-
-    const current: WaterTargets = {
-      pH: this.state.pH,
-      temperature: this.state.temperature,
-      oxygenLevel: this.state.oxygenLevel,
-    };
-
     for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
-      const delta = targets[key] - current[key];
-      if (Math.abs(delta) < 0.01 || maxStep === 0) {
-        continue;
-      }
+      const delta = targets[key] - this.state[key];
+      if (Math.abs(delta) < 0.01 || maxStep === 0) continue;
 
       const correction = Math.sign(delta) * Math.min(Math.abs(delta), maxStep);
       if (Math.abs(correction) > 0.01) {
-        updates[key] = current[key] + correction;
+        await this.updateProperty(key, this.state[key] + correction);
       }
     }
-
-    const entries = Object.entries(updates) as Array<[keyof WaterTargets, number]>;
-    for (const [key, value] of entries) {
-      await this.updateProperty(key, value);
-    }
-  }
-
-  private loadOptimalTargetsFromConfig(): WaterTargets {
-    try {
-      const configPath = path.join(process.cwd(), "config.json");
-      const configContent = fs.readFileSync(configPath, "utf-8");
-      const config = JSON.parse(configContent) as any;
-
-      const defaults: WaterTargets = {
-        pH: 7.0,
-        temperature: 25.0,
-        oxygenLevel: 7.0,
-      };
-
-      if (!config?.parameters) {
-        return defaults;
-      }
-
-      const targets: WaterTargets = { ...defaults };
-      for (const key of ["pH", "temperature", "oxygenLevel"] as const) {
-        const paramConfig = config.parameters[key];
-        if (paramConfig?.optimal) {
-          const min = Number(paramConfig.optimal.min);
-          const max = Number(paramConfig.optimal.max);
-          if (!Number.isNaN(min) && !Number.isNaN(max)) {
-            targets[key] = (min + max) / 2;
-          }
-        }
-      }
-
-      return targets;
-    } catch (error) {
-      return {
-        pH: 7.0,
-        temperature: 25.0,
-        oxygenLevel: 7.0,
-      };
-    }
-  }
-
-  /**
-   * Check if all parameters are within optimal range
-   */
-  public allParametersOptimal(): boolean {
-    const OPTIMAL_RANGES = {
-      pH: { min: 6.5, max: 7.5 },
-      temperature: { min: 24, max: 26 },
-      oxygenLevel: { min: 6, max: 8 },
-    };
-
-    return (
-      this.state.pH >= OPTIMAL_RANGES.pH.min &&
-      this.state.pH <= OPTIMAL_RANGES.pH.max &&
-      this.state.temperature >= OPTIMAL_RANGES.temperature.min &&
-      this.state.temperature <= OPTIMAL_RANGES.temperature.max &&
-      this.state.oxygenLevel >= OPTIMAL_RANGES.oxygenLevel.min &&
-      this.state.oxygenLevel <= OPTIMAL_RANGES.oxygenLevel.max
-    );
   }
 
   /**

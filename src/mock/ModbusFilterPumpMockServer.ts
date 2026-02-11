@@ -165,19 +165,11 @@ class ModbusFilterPumpMockServer {
     return statuses[status] || `unknown(${status})`;
   }
 
-  /**
-   * Read a register value (simulates Modbus read)
-   */
-  public readRegister(address: number): number {
-    const value = this.registers[address] || 0;
-    // console.log(`[Modbus Read] Register ${address} = ${value}`);
-    return value;
+  private readRegister(address: number): number {
+    return this.registers[address] || 0;
   }
 
-  /**
-   * Write to a register (simulates Modbus write)
-   */
-  public writeRegister(address: number, value: number): void {
+  private writeRegister(address: number, value: number): void {
     this.registers[address] = value;
     this.onRegisterChange(address, value);
   }
@@ -205,20 +197,6 @@ class ModbusFilterPumpMockServer {
       this.server.close();
       this.server = null;
     }
-  }
-
-  /**
-   * Get current register values
-   */
-  public getRegisters(): ModbusRegisters {
-    return { ...this.registers };
-  }
-
-  /**
-   * Set register value
-   */
-  public setRegister(address: number, value: number): void {
-    this.writeRegister(address, value);
   }
 }
 

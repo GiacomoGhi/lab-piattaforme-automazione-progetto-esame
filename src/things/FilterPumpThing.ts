@@ -199,51 +199,15 @@ export class FilterPumpThing {
   }
 
   private async connectToModbus(): Promise<void> {
-    this.ensureModbusEntities();
     this.consumedModbus = await this.runtime.consume(this.modbusTD);
   }
 
-  private ensureModbusEntities(): void {
-    const td = this.modbusTD as any;
-    const ensureEntityOnForms = (forms?: Array<Record<string, unknown>>) => {
-      if (!Array.isArray(forms)) return;
-      for (const form of forms) {
-        if (!form) continue;
-        if (form["modv:entity"] == null && form["modv:function"] == null) {
-          form["modv:entity"] = "HoldingRegister";
-        }
-      }
-    };
-
-    const properties = td?.properties || {};
-    for (const prop of Object.values(properties)) {
-      ensureEntityOnForms((prop as any)?.forms);
-    }
-
-    const actions = td?.actions || {};
-    for (const action of Object.values(actions)) {
-      ensureEntityOnForms((action as any)?.forms);
-    }
-  }
-
   private async readModbusNumber(property: string): Promise<number> {
-    if (!this.consumedModbus) {
-      return 0;
-    }
+    if (!this.consumedModbus) return 0;
     const prop = await this.consumedModbus.readProperty(property);
     const raw = await prop.value();
-    if (typeof raw === "number") {
-      return raw;
-    }
-    if (Buffer.isBuffer(raw)) {
-      return raw.readUInt16BE(0);
-    }
-    if (typeof raw === "string") {
-      const buffer = Buffer.from(raw, "binary");
-      if (buffer.length >= 2) {
-        return buffer.readUInt16BE(0);
-      }
-    }
+    if (typeof raw === "number") return raw;
+    if (Buffer.isBuffer(raw)) return raw.readUInt16BE(0);
     return Number(raw);
   }
 
@@ -272,12 +236,5 @@ export class FilterPumpThing {
     this.state.pumpSpeed = pumpSpeed;
     this.state.filterStatus = this.mapStatusFromRegister(filterStatus);
     this.state.filterHealth = filterHealth;
-  }
-
-  /**
-   * Get current state for external use
-   */
-  public getState(): PumpState {
-    return { ...this.state };
   }
 }

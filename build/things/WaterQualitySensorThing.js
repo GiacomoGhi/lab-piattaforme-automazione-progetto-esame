@@ -179,45 +179,7 @@ class WaterQualitySensorThing {
                 // Fetch the Water Thing Description
                 const waterTD = yield this.runtime.requestThingDescription("http://localhost:8080/water");
                 this.consumedWater = yield this.runtime.consume(waterTD);
-                console.log("[Sensor] ✅ Connected to Water Digital Twin");
-                // ===== PUB/SUB PATTERN DISABLED =====
-                // In questo scenario, il PUB/SUB è controproducente perché creerebbe continue segnalazioni
-                // ad ogni cambiamento dei parametri dell'acqua. Manteniamo solo il polling a intervalli.
-                /*
-                // Subscribe to the waterStateChanged event (pub/sub pattern)
-                await this.consumedWater.subscribeEvent(
-                  "waterStateChanged",
-                  async (data) => {
-                    const event = (await data.value()) as WaterStateChangedEvent;
-                    console.log(
-                      `[Sensor] 📨 Received water state change: ${event.parameter} = ${event.newValue}`
-                    );
-          
-                    // Update local cache
-                    switch (event.parameter) {
-                      case "pH":
-                        this.pH = event.newValue;
-                        break;
-                      case "temperature":
-                        this.temperature = event.newValue;
-                        break;
-                      case "oxygenLevel":
-                        this.oxygenLevel = event.newValue;
-                        break;
-                    }
-          
-                    // Check statuses and emit events
-                    this.updateStatusesAndEmitEvents();
-          
-                    // Emit property changes to notify our subscribers
-                    this.thing.emitPropertyChange(event.parameter);
-                    this.thing.emitPropertyChange("allParameters");
-                  }
-                );
-          
-                console.log("[Sensor] 📡 Subscribed to Water Digital Twin events");
-                */
-                console.log("[Sensor] 📡 PUB/SUB disabled - using polling mode only");
+                console.log("[Sensor] ✅ Connected to Water Digital Twin (polling mode)");
                 return true;
             }
             catch (error) {
@@ -339,26 +301,6 @@ class WaterQualitySensorThing {
             console.error(`Error getting parameter status for ${param}:`, error);
             return "ok";
         }
-    }
-    /**
-     * Get current parameter status for external use
-     */
-    getStatus() {
-        return {
-            pH: this.pHStatus,
-            temperature: this.temperatureStatus,
-            oxygenLevel: this.oxygenLevelStatus,
-        };
-    }
-    /**
-     * Get current values for external use
-     */
-    getValues() {
-        return {
-            pH: this.pH,
-            temperature: this.temperature,
-            oxygenLevel: this.oxygenLevel,
-        };
     }
     /**
      * Set sampling interval (in milliseconds)

@@ -158,51 +158,19 @@ class FilterPumpThing {
     }
     connectToModbus() {
         return __awaiter(this, void 0, void 0, function* () {
-            this.ensureModbusEntities();
             this.consumedModbus = yield this.runtime.consume(this.modbusTD);
         });
     }
-    ensureModbusEntities() {
-        const td = this.modbusTD;
-        const ensureEntityOnForms = (forms) => {
-            if (!Array.isArray(forms))
-                return;
-            for (const form of forms) {
-                if (!form)
-                    continue;
-                if (form["modv:entity"] == null && form["modv:function"] == null) {
-                    form["modv:entity"] = "HoldingRegister";
-                }
-            }
-        };
-        const properties = (td === null || td === void 0 ? void 0 : td.properties) || {};
-        for (const prop of Object.values(properties)) {
-            ensureEntityOnForms(prop === null || prop === void 0 ? void 0 : prop.forms);
-        }
-        const actions = (td === null || td === void 0 ? void 0 : td.actions) || {};
-        for (const action of Object.values(actions)) {
-            ensureEntityOnForms(action === null || action === void 0 ? void 0 : action.forms);
-        }
-    }
     readModbusNumber(property) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.consumedModbus) {
+            if (!this.consumedModbus)
                 return 0;
-            }
             const prop = yield this.consumedModbus.readProperty(property);
             const raw = yield prop.value();
-            if (typeof raw === "number") {
+            if (typeof raw === "number")
                 return raw;
-            }
-            if (Buffer.isBuffer(raw)) {
+            if (Buffer.isBuffer(raw))
                 return raw.readUInt16BE(0);
-            }
-            if (typeof raw === "string") {
-                const buffer = Buffer.from(raw, "binary");
-                if (buffer.length >= 2) {
-                    return buffer.readUInt16BE(0);
-                }
-            }
             return Number(raw);
         });
     }
@@ -231,12 +199,6 @@ class FilterPumpThing {
             this.state.filterStatus = this.mapStatusFromRegister(filterStatus);
             this.state.filterHealth = filterHealth;
         });
-    }
-    /**
-     * Get current state for external use
-     */
-    getState() {
-        return Object.assign({}, this.state);
     }
 }
 exports.FilterPumpThing = FilterPumpThing;
